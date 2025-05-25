@@ -1,0 +1,20 @@
+apiVersion: keycloak.schella.network/v1alpha1
+kind: Client
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: client-sample
+spec:
+  realmRef:
+    name: realm-sample
+    # namespace: default  # Optional, defaults to same namespace
+  clientId: client-sample
+  name: "My Application"
+  description: "My application client"
+  enabled: true
+  #publicClient: false
+  #redirectUris:
+  #  - "https://myapp.example.com/callback"
+  #webOrigins:
+  #  - "https://myapp.example.com"

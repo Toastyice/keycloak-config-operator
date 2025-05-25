@@ -1,0 +1,151 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: realms.keycloak.schella.network
+spec:
+  group: keycloak.schella.network
+  names:
+    kind: Realm
+    listKind: RealmList
+    plural: realms
+    singular: realm
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.enabled
+      name: Enabled
+      type: boolean
+    - jsonPath: .spec.displayName
+      name: Display Name
+      type: string
+    - jsonPath: .spec.displayNameHtml
+      name: Display Name Html
+      type: string
+    - jsonPath: .spec.sslRequired
+      name: Ssl Required
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .spec.userManagedAccess
+      name: UserManagedAccess
+      type: boolean
+    - jsonPath: .spec.organizationsEnabled
+      name: Organizations Enabled
+      type: boolean
+    - jsonPath: .spec.registrationAllowed
+      name: Registration Allowed
+      type: boolean
+    - jsonPath: .spec.resetPasswordAllowed
+      name: ResetPassword Allowed
+      type: boolean
+    - jsonPath: .spec.rememberMe
+      name: Remember Me
+      type: boolean
+    - jsonPath: .spec.registrationEmailAsUsername
+      name: Registration Email As Username
+      type: boolean
+    - jsonPath: .spec.loginWithEmailAllowed
+      name: Login With Email Allowed
+      type: boolean
+    - jsonPath: .spec.duplicateEmailsAllowed
+      name: Duplicate Emails Allowed
+      type: boolean
+    - jsonPath: .spec.verifyEmail
+      name: VerifyEmail
+      type: boolean
+    - jsonPath: .spec.editUsernameAllowed
+      name: Edit Username Allowed
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Realm is the Schema for the realms API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RealmSpec defines the desired state of Realm
+            properties:
+              displayName:
+                type: string
+              displayNameHtml:
+                type: string
+              duplicateEmailsAllowed:
+                type: boolean
+              editUsernameAllowed:
+                type: boolean
+              enabled:
+                default: true
+                type: boolean
+              loginWithEmailAllowed:
+                default: true
+                type: boolean
+              organizationsEnabled:
+                type: boolean
+              registrationAllowed:
+                type: boolean
+              registrationEmailAsUsername:
+                type: boolean
+              rememberMe:
+                type: boolean
+              resetPasswordAllowed:
+                type: boolean
+              sslRequired:
+                default: external
+                enum:
+                - none
+                - external
+                - all
+                type: string
+              userManagedAccess:
+                type: boolean
+              verifyEmail:
+                type: boolean
+            type: object
+            x-kubernetes-validations:
+            - message: duplicateEmailsAllowed must be false when loginWithEmailAllowed
+                or registrationEmailAsUsername is true
+              rule: '!(self.loginWithEmailAllowed == true || self.registrationEmailAsUsername
+                == true) || self.duplicateEmailsAllowed == false'
+          status:
+            description: RealmStatus defines the observed state of Realm
+            properties:
+              lastSyncTime:
+                description: LastSyncTime is the last time the realm was synced
+                format: date-time
+                type: string
+              message:
+                description: Message provides additional information about the current
+                  state
+                type: string
+              ready:
+                description: Ready indicates if the realm is ready
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

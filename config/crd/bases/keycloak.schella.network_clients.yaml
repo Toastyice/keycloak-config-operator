@@ -1,0 +1,136 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: clients.keycloak.schella.network
+spec:
+  group: keycloak.schella.network
+  names:
+    kind: Client
+    listKind: ClientList
+    plural: clients
+    singular: client
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.clientId
+      name: ClientID
+      type: string
+    - jsonPath: .spec.realmRef.name
+      name: Realm
+      type: string
+    - jsonPath: .spec.enabled
+      name: Enabled
+      type: boolean
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Client is the Schema for the clients API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ClientSpec defines the desired state of Client
+            properties:
+              clientAuthenticatorType:
+                default: client-secret
+                description: ClientAuthenticatorType specifies the client authenticator
+                  type
+                type: string
+              clientId:
+                description: ClientID is the unique identifier for this client
+                type: string
+              description:
+                description: Description of the client
+                type: string
+              enabled:
+                default: true
+                description: Enabled indicates whether this client is enabled
+                type: boolean
+              name:
+                description: Name is the display name of the client
+                type: string
+              publicClient:
+                description: PublicClient indicates if this is a public client
+                type: boolean
+              realmRef:
+                description: RealmRef specifies which realm this client belongs to
+                properties:
+                  name:
+                    description: Name is the name of the Realm resource
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace is the namespace of the Realm resource
+                      If empty, the same namespace as the Client will be used
+                    type: string
+                required:
+                - name
+                type: object
+              redirectUris:
+                description: RedirectUris is a list of valid redirect URIs
+                items:
+                  type: string
+                type: array
+              webOrigins:
+                description: WebOrigins is a list of allowed web origins
+                items:
+                  type: string
+                type: array
+            required:
+            - clientId
+            - realmRef
+            type: object
+          status:
+            description: |-
+              ClientStatus defines the observed state of Client
+              ClientStatus defines the observed state of Client
+            properties:
+              clientUUID:
+                description: |-
+                  ClientUUID is the internal Keycloak UUID for this client
+                  This is set automatically and should not be modified
+                type: string
+              lastSyncTime:
+                description: LastSyncTime is the last time the client was synced
+                format: date-time
+                type: string
+              message:
+                description: Message provides additional information about the current
+                  state
+                type: string
+              ready:
+                description: Ready indicates if the client is ready
+                type: boolean
+              realmReady:
+                description: RealmReady indicates if the referenced realm is ready
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

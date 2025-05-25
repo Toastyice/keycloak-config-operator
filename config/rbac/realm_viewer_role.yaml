@@ -1,0 +1,23 @@
+# permissions for end users to view realms.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: realm-viewer-role
+rules:
+- apiGroups:
+  - keycloak.schella.network
+  resources:
+  - realms
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - keycloak.schella.network
+  resources:
+  - realms/status
+  verbs:
+  - get

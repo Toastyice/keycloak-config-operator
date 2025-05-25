@@ -1,0 +1,22 @@
+apiVersion: keycloak.schella.network/v1alpha1
+kind: Realm
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: realm-sample
+spec:
+  enabled: true
+  displayName: "Sample displayName"
+  displayNameHtml: "<b> Sample displayNameHtml </b>"
+  sslRequired: external
+  userManagedAccess: false
+  organizationsEnabled: false #broken
+  registrationAllowed: false
+  resetPasswordAllowed: false
+  rememberMe: false
+  registrationEmailAsUsername: false
+  loginWithEmailAllowed: true
+  duplicateEmailsAllowed: false
+  verifyEmail: false
+  editUsernameAllowed: false
