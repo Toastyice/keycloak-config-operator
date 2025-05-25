@@ -28,13 +28,6 @@ type RealmReconciler struct {
 	KeycloakClient *keycloak.KeycloakClient
 }
 
-// FieldDiff represents a difference between expected and actual field values
-type FieldDiff struct {
-	Name string
-	Old  any
-	New  any
-}
-
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=realms,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=realms/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=realms/finalizers,verbs=update

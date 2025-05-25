@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -150,6 +152,42 @@ func (r *ClientReconciler) setOwnerReference(ctx context.Context, clientObj *key
 	return nil
 }
 
+// getClientDiffs compares client specifications and returns a list of differences
+func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) []string {
+	var diffs []string
+
+	// Regular fields that can use reflect.DeepEqual
+	fields := []FieldDiff{
+		{"name", keycloakClient.Name, clientObj.Spec.Name},
+		{"description", keycloakClient.Description, clientObj.Spec.Description},
+		{"enabled", keycloakClient.Enabled, clientObj.Spec.Enabled},
+		{"clientAuthenticatorType", keycloakClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
+		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
+	}
+
+	for _, field := range fields {
+		if !reflect.DeepEqual(field.Old, field.New) {
+			// Format strings with quotes, others without
+			if reflect.TypeOf(field.Old).Kind() == reflect.String {
+				diffs = append(diffs, fmt.Sprintf("%s: '%v' -> '%v'", field.Name, field.Old, field.New))
+			} else {
+				diffs = append(diffs, fmt.Sprintf("%s: %v -> %v", field.Name, field.Old, field.New))
+			}
+		}
+	}
+
+	// Handle slice fields separately to properly compare nil vs empty slices
+	if !slicesEqual(keycloakClient.ValidRedirectUris, clientObj.Spec.RedirectUris) {
+		diffs = append(diffs, fmt.Sprintf("validRedirectUris: %v -> %v", keycloakClient.ValidRedirectUris, clientObj.Spec.RedirectUris))
+	}
+
+	if !slicesEqual(keycloakClient.WebOrigins, clientObj.Spec.WebOrigins) {
+		diffs = append(diffs, fmt.Sprintf("webOrigins: %v -> %v", keycloakClient.WebOrigins, clientObj.Spec.WebOrigins))
+	}
+
+	return diffs
+}
+
 func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -212,12 +250,23 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		return r.updateStatus(ctx, clientObj, true, true, "Client created successfully")
 	}
 
-	// Check for differences and update if necessary
-	if r.clientNeedsUpdate(clientObj, keycloakClient) {
-		log.Info("Client configuration changes detected", "client", clientObj.Spec.ClientID, "realm", realm.Name)
+	// Check for differences using the structured approach
+	diffs := getClientDiffs(clientObj, keycloakClient)
 
+	if len(diffs) > 0 {
+		log.Info("Client configuration changes detected", "client", clientObj.Spec.ClientID, "realm", realm.Name, "changes", strings.Join(diffs, ", "))
+
+		// Create a copy to modify
 		updatedClient := *keycloakClient
-		r.applyClientChanges(clientObj, &updatedClient)
+
+		// Apply changes
+		updatedClient.Name = clientObj.Spec.Name
+		updatedClient.Description = clientObj.Spec.Description
+		updatedClient.Enabled = clientObj.Spec.Enabled
+		updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
+		updatedClient.PublicClient = clientObj.Spec.PublicClient
+		updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris
+		updatedClient.WebOrigins = clientObj.Spec.WebOrigins
 
 		if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
 			log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)
@@ -228,27 +277,8 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		return r.updateStatus(ctx, clientObj, true, true, "Client updated successfully")
 	}
 
+	// No changes detected - no logging needed for sync success
 	return r.updateStatus(ctx, clientObj, true, true, "Client synchronized")
-}
-
-func (r *ClientReconciler) clientNeedsUpdate(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) bool {
-	return clientObj.Spec.Name != keycloakClient.Name ||
-		clientObj.Spec.Description != keycloakClient.Description ||
-		clientObj.Spec.Enabled != keycloakClient.Enabled ||
-		clientObj.Spec.ClientAuthenticatorType != keycloakClient.ClientAuthenticatorType ||
-		clientObj.Spec.PublicClient != keycloakClient.PublicClient ||
-		!slicesEqual(clientObj.Spec.RedirectUris, keycloakClient.ValidRedirectUris) ||
-		!slicesEqual(clientObj.Spec.WebOrigins, keycloakClient.WebOrigins)
-}
-
-func (r *ClientReconciler) applyClientChanges(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) {
-	keycloakClient.Name = clientObj.Spec.Name
-	keycloakClient.Description = clientObj.Spec.Description
-	keycloakClient.Enabled = clientObj.Spec.Enabled
-	keycloakClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
-	keycloakClient.PublicClient = clientObj.Spec.PublicClient
-	keycloakClient.ValidRedirectUris = clientObj.Spec.RedirectUris
-	keycloakClient.WebOrigins = clientObj.Spec.WebOrigins
 }
 
 func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycloakv1alpha1.Client) (ctrl.Result, error) {
@@ -334,19 +364,6 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 
 	// Requeue after 10 sec for periodic sync
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-}
-
-// Helper function to compare slices
-func slicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, v := range a {
-		if v != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // SetupWithManager sets up the controller with the Manager.
