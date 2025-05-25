@@ -161,6 +161,7 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 	fields := []FieldDiff{
 		{"name", keycloakClient.Name, clientObj.Spec.Name},
 		{"description", keycloakClient.Description, clientObj.Spec.Description},
+		{"rootUrl", derefStringPtr(keycloakClient.RootUrl), clientObj.Spec.RootUrl},
 		{"enabled", keycloakClient.Enabled, clientObj.Spec.Enabled},
 		{"clientAuthenticatorType", keycloakClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
 		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
@@ -255,6 +256,7 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			Name:                      clientObj.Spec.Name,
 			Description:               clientObj.Spec.Description,
 			Enabled:                   clientObj.Spec.Enabled,
+			RootUrl:                   stringPtr(clientObj.Spec.RootUrl),
 			ClientAuthenticatorType:   clientObj.Spec.ClientAuthenticatorType,
 			PublicClient:              clientObj.Spec.PublicClient,
 			ValidRedirectUris:         clientObj.Spec.RedirectUris,
@@ -301,6 +303,7 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			updatedClient.Name = clientObj.Spec.Name
 			updatedClient.Description = clientObj.Spec.Description
 			updatedClient.Enabled = clientObj.Spec.Enabled
+			updatedClient.RootUrl = stringPtr(clientObj.Spec.RootUrl)
 			updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
 			updatedClient.PublicClient = clientObj.Spec.PublicClient
 			updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris

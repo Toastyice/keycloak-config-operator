@@ -34,6 +34,9 @@ type ClientSpec struct {
 	// +kubebuilder:default=true
 	Enabled bool `json:"enabled,omitempty"`
 
+	// +optional
+	RootUrl string `json:"rootUrl,omitempty"`
+
 	// ClientAuthenticatorType specifies the client authenticator type
 	// +optional
 	// +kubebuilder:default="client-secret"

@@ -26,6 +26,7 @@ spec:
   enabled: true
   name: "My Application"
   description: "My application"
+  rootUrl: https://domain.example
   publicClient: false
   standardFlowEnabled: true
   directAccessGrantsEnabled: true

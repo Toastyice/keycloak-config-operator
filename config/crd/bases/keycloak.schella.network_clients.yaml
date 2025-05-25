@@ -126,6 +126,8 @@ spec:
                   - name
                   type: object
                 type: array
+              rootUrl:
+                type: string
               serviceAccountsEnabled:
                 default: false
                 type: boolean
