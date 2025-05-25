@@ -11,7 +11,7 @@ spec:
     # namespace: default  # Optional, defaults to same namespace
   clientId: client-sample
   name: "My Application"
-  description: "My application client"
+  description: "My application"
   enabled: true
   #publicClient: false
   #redirectUris:

@@ -12,6 +12,7 @@ type ClientSpec struct {
 
 	// ClientID is the unique identifier for this client
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="clientId is immutable"
 	ClientID string `json:"clientId"`
 
 	// Name is the display name of the client

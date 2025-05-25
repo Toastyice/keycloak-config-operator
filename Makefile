@@ -134,11 +134,11 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate install fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
 
 .PHONY: run-prod
-run-prod: manifests generate fmt vet ## Run a controller from your host.
+run-prod: manifests generate install fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go -zap-devel=false
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.

@@ -63,6 +63,9 @@ spec:
               clientId:
                 description: ClientID is the unique identifier for this client
                 type: string
+                x-kubernetes-validations:
+                - message: clientId is immutable
+                  rule: self == oldSelf
               description:
                 description: Description of the client
                 type: string
