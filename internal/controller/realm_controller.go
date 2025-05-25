@@ -243,15 +243,34 @@ func (r *RealmReconciler) reconcileDelete(ctx context.Context, realm *keycloakv1
 func (r *RealmReconciler) updateStatus(ctx context.Context, realm *keycloakv1alpha1.Realm, ready bool, message string) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Update status
-	realm.Status.Ready = ready
-	realm.Status.Message = message
-	now := metav1.NewTime(time.Now())
-	realm.Status.LastSyncTime = &now
+	// Retry status update with exponential backoff to handle conflicts
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		// Fetch the latest version of the realm to avoid conflicts
+		var latestRealm keycloakv1alpha1.Realm
+		if err := r.Get(ctx, client.ObjectKeyFromObject(realm), &latestRealm); err != nil {
+			log.Error(err, "Failed to fetch latest Realm for status update")
+			return ctrl.Result{}, err
+		}
 
-	if err := r.Status().Update(ctx, realm); err != nil {
-		log.Error(err, "Failed to update Realm status")
-		return ctrl.Result{}, err
+		// Update status on the latest version
+		latestRealm.Status.Ready = ready
+		latestRealm.Status.Message = message
+		now := metav1.NewTime(time.Now())
+		latestRealm.Status.LastSyncTime = &now
+
+		if err := r.Status().Update(ctx, &latestRealm); err != nil {
+			if errors.IsConflict(err) && i < maxRetries-1 {
+				log.V(1).Info("Status update conflict, retrying", "attempt", i+1, "realm", realm.Name)
+				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond) // Simple exponential backoff
+				continue
+			}
+			log.Error(err, "Failed to update Realm status after retries")
+			return ctrl.Result{}, err
+		}
+
+		// Success
+		break
 	}
 
 	// Requeue after 10 sec for periodic sync

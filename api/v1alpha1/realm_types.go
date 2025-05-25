@@ -71,7 +71,7 @@ type RealmSpec struct {
 
 	// +optional
 	// +kubebuilder:validation:Type=boolean
-	DuplicateEmailsAllowed bool `json:"duplicateEmailsAllowed,omitempty"`
+	DuplicateEmailsAllowed bool `json:"duplicateEmailsAllowed"`
 
 	// +optional
 	// +kubebuilder:validation:Type=boolean
