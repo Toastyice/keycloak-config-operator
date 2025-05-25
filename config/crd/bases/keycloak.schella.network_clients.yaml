@@ -115,6 +115,17 @@ spec:
                 items:
                   type: string
                 type: array
+              roles:
+                items:
+                  properties:
+                    description:
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               serviceAccountsEnabled:
                 type: boolean
               standardFlowEnabled:
@@ -142,9 +153,7 @@ spec:
             - message: serviceAccountsEnabled must be false when publicClient is true
               rule: '!self.publicClient || !self.serviceAccountsEnabled'
           status:
-            description: |-
-              ClientStatus defines the observed state of Client
-              ClientStatus defines the observed state of Client
+            description: ClientStatus defines the observed state of Client
             properties:
               clientUUID:
                 description: |-
@@ -165,6 +174,11 @@ spec:
               realmReady:
                 description: RealmReady indicates if the referenced realm is ready
                 type: boolean
+              roleUUIDs:
+                additionalProperties:
+                  type: string
+                description: RoleUUIDs maps role names to their Keycloak UUIDs
+                type: object
             type: object
         type: object
     served: true

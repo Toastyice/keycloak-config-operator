@@ -74,6 +74,9 @@ type ClientSpec struct {
 
 	// +optional
 	Oauth2DeviceAuthorizationGrantEnabled bool `json:"oauth2DeviceAuthorizationGrantEnabled"`
+
+	// +optional
+	Roles []RoleSpec `json:"roles,omitempty"`
 }
 
 // RealmReference defines a reference to a Realm resource
@@ -88,7 +91,14 @@ type RealmReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// ClientStatus defines the observed state of Client
+type RoleSpec struct {
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// +optional
+	Description string `json:"description"`
+}
+
 // ClientStatus defines the observed state of Client
 type ClientStatus struct {
 	// Ready indicates if the client is ready
@@ -107,6 +117,10 @@ type ClientStatus struct {
 	// This is set automatically and should not be modified
 	// +optional
 	ClientUUID string `json:"clientUUID,omitempty"`
+
+	// RoleUUIDs maps role names to their Keycloak UUIDs
+	// +optional
+	RoleUUIDs map[string]string `json:"roleUUIDs,omitempty"`
 }
 
 // +kubebuilder:object:root=true

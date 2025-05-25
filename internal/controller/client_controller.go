@@ -198,11 +198,30 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 	return diffs
 }
 
+// TODO replace this!
+func (r *ClientReconciler) getClientRolesForSingleClient(ctx context.Context, realmName, clientUUID string) ([]*keycloak.Role, error) {
+	// Create a mock OpenidClient to use with the existing GetClientRoles method
+	mockClients := []*keycloak.OpenidClient{
+		{
+			Id: clientUUID,
+		},
+	}
+
+	// Use the existing GetClientRoles method
+	allRoles, err := r.KeycloakClient.GetClientRoles(ctx, realmName, mockClients)
+	if err != nil {
+		return nil, err
+	}
+
+	return allRoles, nil
+}
+
 func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	var keycloakClient *keycloak.OpenidClient
 	var err error
+	var clientCreatedOrUpdated bool
 
 	// If we have a stored UUID, use it to fetch the client
 	if clientObj.Status.ClientUUID != "" {
@@ -212,8 +231,9 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			if keycloak.ErrorIs404(err) {
 				// Client was deleted in Keycloak but we still have the UUID
 				log.Info("Client UUID not found in Keycloak, will recreate", "uuid", clientObj.Status.ClientUUID)
-				clientObj.Status.ClientUUID = "" // Clear the invalid UUID
-				keycloakClient = nil             // Will trigger recreation below
+				clientObj.Status.ClientUUID = ""                     // Clear the invalid UUID
+				clientObj.Status.RoleUUIDs = make(map[string]string) // Clear role UUIDs too
+				keycloakClient = nil                                 // Will trigger recreation below
 			} else {
 				return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Failed to get client by UUID: %v", err))
 			}
@@ -246,13 +266,11 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			ServiceAccountsEnabled:    clientObj.Spec.ServiceAccountsEnabled,
 		}
 
-		// Create the client (returns only error)
+		// Create the client
 		err := r.KeycloakClient.NewOpenidClient(ctx, newClient)
 		if err != nil {
 			if keycloak.ErrorIs409(err) {
-				// Client already exists but we don't have the UUID
-				// This is the edge case we're ignoring for now
-				log.Info("Client already exists in Keycloak but no UUID stored - ignoring until manual intervention", "client", clientObj.Spec.ClientID)
+				log.Info("Client already exists in Keycloak but no UUID stored", "client", clientObj.Spec.ClientID)
 				return r.updateStatus(ctx, clientObj, false, true, "Client exists in Keycloak but UUID not tracked - manual intervention required")
 			}
 			return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Failed to create client: %v", err))
@@ -264,57 +282,192 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Client created but failed to retrieve UUID: %v", err))
 		}
 
-		// Store the UUID of the created client
+		// Store the UUID and clear any stale role UUIDs
 		clientObj.Status.ClientUUID = createdClient.Id
+		clientObj.Status.RoleUUIDs = make(map[string]string) // Reset role UUIDs for new client
+		clientCreatedOrUpdated = true
 		log.Info("Client created successfully", "client", clientObj.Spec.ClientID, "realm", realm.Name, "uuid", createdClient.Id)
-		return r.updateStatus(ctx, clientObj, true, true, "Client created successfully")
-	}
+	} else {
+		// Check for differences and update if needed
+		diffs := getClientDiffs(clientObj, keycloakClient)
 
-	// Check for differences using the structured approach
-	diffs := getClientDiffs(clientObj, keycloakClient)
+		if len(diffs) > 0 {
+			log.Info("Client configuration changes detected", "client", clientObj.Spec.ClientID, "realm", realm.Name, "changes", strings.Join(diffs, ", "))
 
-	if len(diffs) > 0 {
-		log.Info("Client configuration changes detected", "client", clientObj.Spec.ClientID, "realm", realm.Name, "changes", strings.Join(diffs, ", "))
+			// Create a copy to modify
+			updatedClient := *keycloakClient
 
-		// Create a copy to modify
-		updatedClient := *keycloakClient
+			// Apply changes
+			updatedClient.Name = clientObj.Spec.Name
+			updatedClient.Description = clientObj.Spec.Description
+			updatedClient.Enabled = clientObj.Spec.Enabled
+			updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
+			updatedClient.PublicClient = clientObj.Spec.PublicClient
+			updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris
+			updatedClient.WebOrigins = clientObj.Spec.WebOrigins
+			updatedClient.StandardFlowEnabled = clientObj.Spec.StandardFlowEnabled
+			updatedClient.DirectAccessGrantsEnabled = clientObj.Spec.DirectAccessGrantsEnabled
+			updatedClient.ImplicitFlowEnabled = clientObj.Spec.ImplicitFlowEnabled
+			updatedClient.ServiceAccountsEnabled = clientObj.Spec.ServiceAccountsEnabled
 
-		// Apply changes
-		updatedClient.Name = clientObj.Spec.Name
-		updatedClient.Description = clientObj.Spec.Description
-		updatedClient.Enabled = clientObj.Spec.Enabled
-		updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
-		updatedClient.PublicClient = clientObj.Spec.PublicClient
-		updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris
-		updatedClient.WebOrigins = clientObj.Spec.WebOrigins
-		updatedClient.StandardFlowEnabled = clientObj.Spec.StandardFlowEnabled
-		updatedClient.DirectAccessGrantsEnabled = clientObj.Spec.DirectAccessGrantsEnabled
-		updatedClient.ImplicitFlowEnabled = clientObj.Spec.ImplicitFlowEnabled
-		updatedClient.ServiceAccountsEnabled = clientObj.Spec.ServiceAccountsEnabled
+			updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
+			updatedClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)
 
-		updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
-		updatedClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)
+			if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
+				log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)
+				return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Failed to update client: %v", err))
+			}
 
-		if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
-			log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)
-			return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Failed to update client: %v", err))
+			clientCreatedOrUpdated = true
+			log.Info("Client updated successfully", "client", clientObj.Spec.ClientID)
 		}
-
-		log.Info("Client updated successfully", "client", clientObj.Spec.ClientID)
-		return r.updateStatus(ctx, clientObj, true, true, "Client updated successfully")
 	}
 
-	// No changes detected - no logging needed for sync success
-	return r.updateStatus(ctx, clientObj, true, true, "Client synchronized")
+	// Reconcile roles after client is ready
+	if clientObj.Status.ClientUUID != "" {
+		if err := r.reconcileClientRoles(ctx, clientObj, realm); err != nil {
+			return r.updateStatus(ctx, clientObj, false, true, fmt.Sprintf("Client ready but failed to reconcile roles: %v", err))
+		}
+	}
+
+	// Determine the appropriate success message
+	var message string
+	if clientCreatedOrUpdated {
+		message = "Client and roles synchronized successfully"
+	} else {
+		message = "Client and roles synchronized"
+	}
+
+	return r.updateStatus(ctx, clientObj, true, true, message)
+}
+
+func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+	log := log.FromContext(ctx)
+
+	// Initialize RoleUUIDs map if nil
+	if clientObj.Status.RoleUUIDs == nil {
+		clientObj.Status.RoleUUIDs = make(map[string]string)
+	}
+
+	// Get existing roles from Keycloak for this specific client
+	existingRoles, err := r.getClientRolesForSingleClient(ctx, realm.Name, clientObj.Status.ClientUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing client roles: %w", err)
+	}
+
+	// Convert existing roles to map for easier lookup
+	existingRoleMap := make(map[string]*keycloak.Role)
+	for _, role := range existingRoles {
+		existingRoleMap[role.Name] = role
+	}
+
+	// Create a set of desired role names from the spec
+	desiredRoles := make(map[string]keycloakv1alpha1.RoleSpec)
+	for _, roleSpec := range clientObj.Spec.Roles {
+		desiredRoles[roleSpec.Name] = roleSpec
+	}
+
+	log.V(1).Info("Role reconciliation",
+		"client", clientObj.Spec.ClientID,
+		"existingRoleCount", len(existingRoles),
+		"desiredRoleCount", len(desiredRoles),
+		"trackedRoleCount", len(clientObj.Status.RoleUUIDs))
+
+	// Step 1: Create or update desired roles
+	for roleName, roleSpec := range desiredRoles {
+		if existingRole, exists := existingRoleMap[roleName]; exists {
+			// Role exists, check if it needs updating
+			if existingRole.Description != roleSpec.Description {
+				log.Info("Updating client role", "role", roleName, "client", clientObj.Spec.ClientID)
+
+				updatedRole := &keycloak.Role{
+					Id:          existingRole.Id,
+					RealmId:     realm.Name,
+					ClientId:    clientObj.Status.ClientUUID,
+					Name:        roleName,
+					Description: roleSpec.Description,
+					ClientRole:  true,
+					ContainerId: clientObj.Status.ClientUUID,
+					Composite:   existingRole.Composite,
+					Attributes:  existingRole.Attributes,
+				}
+
+				if err := r.KeycloakClient.UpdateRole(ctx, updatedRole); err != nil {
+					return fmt.Errorf("failed to update role %s: %w", roleName, err)
+				}
+				log.Info("Successfully updated client role", "role", roleName)
+			}
+			// Store/update the UUID in our tracking map
+			clientObj.Status.RoleUUIDs[roleName] = existingRole.Id
+		} else {
+			// Role doesn't exist in Keycloak, create it
+			log.Info("Creating client role", "role", roleName, "client", clientObj.Spec.ClientID)
+
+			newRole := &keycloak.Role{
+				RealmId:     realm.Name,
+				ClientId:    clientObj.Status.ClientUUID,
+				Name:        roleName,
+				Description: roleSpec.Description,
+				ClientRole:  true,
+				ContainerId: clientObj.Status.ClientUUID,
+				Composite:   false,
+				Attributes:  make(map[string][]string),
+			}
+
+			if err := r.KeycloakClient.CreateRole(ctx, newRole); err != nil {
+				return fmt.Errorf("failed to create role %s: %w", roleName, err)
+			}
+
+			// Store the UUID (CreateRole sets the Id field in the role struct)
+			clientObj.Status.RoleUUIDs[roleName] = newRole.Id
+			log.Info("Successfully created client role", "role", roleName, "uuid", newRole.Id)
+		}
+	}
+
+	// Step 2: Delete roles that exist in Keycloak but are not in the desired spec
+	for _, existingRole := range existingRoles {
+		if _, stillDesired := desiredRoles[existingRole.Name]; !stillDesired {
+			log.Info("Deleting client role not in spec", "role", existingRole.Name, "client", clientObj.Spec.ClientID, "uuid", existingRole.Id)
+
+			if err := r.KeycloakClient.DeleteRole(ctx, realm.Name, existingRole.Id); err != nil {
+				if !keycloak.ErrorIs404(err) {
+					log.Error(err, "Failed to delete role from Keycloak", "role", existingRole.Name, "uuid", existingRole.Id)
+					return fmt.Errorf("failed to delete role %s: %w", existingRole.Name, err)
+				}
+				// Role was already deleted, continue
+				log.Info("Role was already deleted from Keycloak", "role", existingRole.Name)
+			} else {
+				log.Info("Successfully deleted client role from Keycloak", "role", existingRole.Name)
+			}
+
+			// Remove from our tracking map
+			delete(clientObj.Status.RoleUUIDs, existingRole.Name)
+		}
+	}
+
+	// Step 3: Clean up any stale entries in our tracking map
+	// (roles that we think exist but actually don't exist in Keycloak anymore)
+	for trackedRoleName := range clientObj.Status.RoleUUIDs {
+		if _, existsInKeycloak := existingRoleMap[trackedRoleName]; !existsInKeycloak {
+			if _, stillDesired := desiredRoles[trackedRoleName]; !stillDesired {
+				log.Info("Removing stale role UUID from tracking", "role", trackedRoleName)
+				delete(clientObj.Status.RoleUUIDs, trackedRoleName)
+			}
+		}
+	}
+
+	log.V(1).Info("Role reconciliation completed",
+		"client", clientObj.Spec.ClientID,
+		"finalTrackedRoleCount", len(clientObj.Status.RoleUUIDs))
+
+	return nil
 }
 
 func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycloakv1alpha1.Client) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(clientObj, clientFinalizer) {
-		// Only attempt deletion if we have a UUID
 		if clientObj.Status.ClientUUID != "" {
-			// Get the realm to know which realm to delete the client from
 			realm, err := r.getRealm(ctx, clientObj)
 			if err != nil {
 				log.Error(err, "Failed to get realm for client deletion", "client", clientObj.Spec.ClientID)
@@ -322,6 +475,18 @@ func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycl
 			}
 
 			if realm != nil {
+				// Delete individual roles first (optional, as they'll be deleted with the client)
+				if clientObj.Status.RoleUUIDs != nil && len(clientObj.Status.RoleUUIDs) > 0 {
+					log.Info("Deleting client roles from Keycloak", "client", clientObj.Spec.ClientID, "roleCount", len(clientObj.Status.RoleUUIDs))
+					for roleName, roleUUID := range clientObj.Status.RoleUUIDs {
+						if err := r.KeycloakClient.DeleteRole(ctx, realm.Name, roleUUID); err != nil {
+							if !keycloak.ErrorIs404(err) {
+								log.Error(err, "Failed to delete client role from Keycloak", "role", roleName)
+							}
+						}
+					}
+				}
+
 				log.Info("Deleting client from Keycloak", "client", clientObj.Spec.ClientID, "realm", realm.Name, "uuid", clientObj.Status.ClientUUID)
 
 				if err := r.KeycloakClient.DeleteOpenidClient(ctx, realm.Name, clientObj.Status.ClientUUID); err != nil {
@@ -332,14 +497,13 @@ func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycl
 						return ctrl.Result{}, err
 					}
 				} else {
-					log.Info("Client deleted from Keycloak", "client", clientObj.Spec.ClientID)
+					log.Info("Client and roles deleted from Keycloak", "client", clientObj.Spec.ClientID)
 				}
 			}
 		} else {
 			log.Info("No UUID stored for client - skipping Keycloak deletion", "client", clientObj.Spec.ClientID)
 		}
 
-		// Remove finalizer
 		controllerutil.RemoveFinalizer(clientObj, clientFinalizer)
 		if err := r.Update(ctx, clientObj); err != nil {
 			return ctrl.Result{}, err
@@ -374,10 +538,32 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 			latestClient.Status.ClientUUID = clientObj.Status.ClientUUID
 		}
 
+		// More robust approach: Preserve RoleUUIDs - use the most recent version
+		if clientObj.Status.RoleUUIDs != nil && len(clientObj.Status.RoleUUIDs) > 0 {
+			// Use the roles from our reconciliation - this is the most up-to-date
+			latestClient.Status.RoleUUIDs = clientObj.Status.RoleUUIDs
+			log.V(1).Info("Using RoleUUIDs from current reconciliation",
+				"client", clientObj.Name,
+				"roleCount", len(clientObj.Status.RoleUUIDs))
+		} else if latestClient.Status.RoleUUIDs != nil && len(latestClient.Status.RoleUUIDs) > 0 {
+			// Keep existing roles if we don't have new ones
+			// This handles the case where another reconciliation might have updated roles
+			log.V(1).Info("Preserving existing RoleUUIDs from cluster",
+				"client", clientObj.Name,
+				"roleCount", len(latestClient.Status.RoleUUIDs))
+			// latestClient.Status.RoleUUIDs is already set from the fetched object
+		} else {
+			// Initialize empty map if both are nil/empty
+			if latestClient.Status.RoleUUIDs == nil {
+				latestClient.Status.RoleUUIDs = make(map[string]string)
+			}
+			log.V(1).Info("No RoleUUIDs to preserve, using empty map", "client", clientObj.Name)
+		}
+
 		if err := r.Status().Update(ctx, &latestClient); err != nil {
 			if errors.IsConflict(err) && i < maxRetries-1 {
 				log.V(1).Info("Status update conflict, retrying", "attempt", i+1, "client", clientObj.Name)
-				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond) // Simple exponential backoff
+				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
 				continue
 			}
 			log.Error(err, "Failed to update Client status after retries")
@@ -386,6 +572,15 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 
 		// Success - update the original object's status to reflect what was saved
 		clientObj.Status = latestClient.Status
+
+		// Add debug logging to confirm what was saved
+		log.Info("Status updated successfully",
+			"client", clientObj.Name,
+			"ready", latestClient.Status.Ready,
+			"message", latestClient.Status.Message,
+			"clientUUID", latestClient.Status.ClientUUID,
+			"roleUUIDsCount", len(latestClient.Status.RoleUUIDs),
+			"roleUUIDs", latestClient.Status.RoleUUIDs)
 		break
 	}
 

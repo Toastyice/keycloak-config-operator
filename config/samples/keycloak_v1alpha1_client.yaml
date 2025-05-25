@@ -26,3 +26,22 @@ spec:
     - "http://localhost:8080/logout"
   webOrigins:
     - "+"
+  roles:
+    - name: admin
+      description: Full administrative access to all system resources
+    - name: editor
+      description: Can create, edit, and publish content
+    - name: viewer
+      description: Read-only access to view content and data
+    - name: moderator
+      description: Can moderate user content and manage discussions
+    - name: analyst
+      description: Access to analytics and reporting tools
+    - name: manager
+      description: Team management and resource allocation permissions
+    - name: developer
+      description: Development environment access and code deployment
+    - name: tester
+      description: Quality assurance and testing environment access
+    - name: support
+      description: Customer support and help desk functions
