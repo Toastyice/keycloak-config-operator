@@ -8,13 +8,14 @@ metadata:
 spec:
   realmRef:
     name: realm-sample
-    # namespace: default  # Optional, defaults to same namespace
+    namespace: default  # Optional, defaults to same namespace
   clientId: client-sample
   enabled: true
   name: "My Application"
   description: "My application"
   publicClient: false
   standardFlowEnabled: true
+  directAccessGrantsEnabled: true
   redirectUris:
     - "https://myapp.example.com/callback"
   postLogoutRedirectUris:

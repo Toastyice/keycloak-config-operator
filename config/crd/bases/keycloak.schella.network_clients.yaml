@@ -71,6 +71,9 @@ spec:
               description:
                 description: Description of the client
                 type: string
+              directAccessGrantsEnabled:
+                default: true
+                type: boolean
               enabled:
                 default: true
                 description: Enabled indicates whether this client is enabled
@@ -84,6 +87,7 @@ spec:
                   type: string
                 type: array
               publicClient:
+                default: true
                 description: PublicClient indicates if this is a public client
                 type: boolean
               realmRef:

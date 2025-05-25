@@ -39,11 +39,8 @@ type ClientSpec struct {
 
 	// PublicClient indicates if this is a public client
 	// +optional
-	PublicClient bool `json:"publicClient"`
-
-	// +optional
 	// +kubebuilder:default=true
-	StandardFlowEnabled bool `json:"standardFlowEnabled"`
+	PublicClient bool `json:"publicClient"`
 
 	// RedirectUris is a list of valid redirect URIs
 	// +optional
@@ -58,6 +55,14 @@ type ClientSpec struct {
 	// +optional
 	// +kubebuilder:default={}
 	WebOrigins []string `json:"webOrigins"`
+
+	// +optional
+	// +kubebuilder:default=true
+	StandardFlowEnabled bool `json:"standardFlowEnabled"`
+
+	// +optional
+	// +kubebuilder:default=true
+	DirectAccessGrantsEnabled bool `json:"directAccessGrantsEnabled"`
 }
 
 // RealmReference defines a reference to a Realm resource
