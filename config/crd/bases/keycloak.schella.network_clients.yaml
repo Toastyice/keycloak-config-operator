@@ -58,6 +58,11 @@ spec:
               if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
               if publicClient is true serviceAccountRoles can't be true
             properties:
+              baseUrl:
+                type: string
+                x-kubernetes-validations:
+                - message: baseUrl must be a valid HTTP or HTTPS URL
+                  rule: self == '' || self.startsWith('http://') || self.startsWith('https://')
               clientAuthenticatorType:
                 default: client-secret
                 description: ClientAuthenticatorType specifies the client authenticator

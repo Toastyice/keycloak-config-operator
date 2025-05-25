@@ -27,6 +27,7 @@ spec:
   name: "My Application"
   description: "My application"
   rootUrl: https://domain.example
+  baseUrl: https://domain.example/fallback
   publicClient: false
   standardFlowEnabled: true
   directAccessGrantsEnabled: true
