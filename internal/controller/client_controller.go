@@ -79,6 +79,12 @@ func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.updateStatus(ctx, &clientObj, false, false, "Referenced realm is not ready")
 	}
 
+	// Set owner reference to the realm
+	if err := r.setOwnerReference(ctx, &clientObj, realm); err != nil {
+		log.Error(err, "Failed to set owner reference", "client", clientObj.Spec.ClientID, "realm", realm.Name)
+		return r.updateStatus(ctx, &clientObj, false, true, fmt.Sprintf("Failed to set owner reference: %v", err))
+	}
+
 	// Reconcile the client
 	return r.reconcileClient(ctx, &clientObj, realm)
 }
@@ -105,6 +111,43 @@ func (r *ClientReconciler) getRealm(ctx context.Context, clientObj *keycloakv1al
 	}
 
 	return &realm, nil
+}
+
+// setOwnerReference establishes an owner-dependent relationship between the realm and client
+func (r *ClientReconciler) setOwnerReference(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+	log := log.FromContext(ctx)
+
+	// Check if owner reference already exists and is correct
+	for _, ownerRef := range clientObj.GetOwnerReferences() {
+		if ownerRef.Kind == "Realm" &&
+			ownerRef.APIVersion == realm.APIVersion &&
+			ownerRef.Name == realm.Name &&
+			ownerRef.UID == realm.UID {
+			// Owner reference already correctly set
+			return nil
+		}
+	}
+
+	// Cross-namespace owner references are not allowed in Kubernetes
+	if clientObj.Namespace != realm.Namespace {
+		log.V(1).Info("Skipping owner reference - cross-namespace references not allowed",
+			"client", clientObj.Name, "clientNamespace", clientObj.Namespace,
+			"realm", realm.Name, "realmNamespace", realm.Namespace)
+		return nil
+	}
+
+	// Set the owner reference
+	if err := controllerutil.SetOwnerReference(realm, clientObj, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %w", err)
+	}
+
+	// Update the client with the new owner reference
+	if err := r.Update(ctx, clientObj); err != nil {
+		return fmt.Errorf("failed to update client with owner reference: %w", err)
+	}
+
+	log.Info("Owner reference set successfully", "client", clientObj.Name, "realm", realm.Name)
+	return nil
 }
 
 func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
@@ -252,17 +295,44 @@ func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycl
 func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloakv1alpha1.Client, ready bool, realmReady bool, message string) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	clientObj.Status.Ready = ready
-	clientObj.Status.RealmReady = realmReady
-	clientObj.Status.Message = message
-	now := metav1.NewTime(time.Now())
-	clientObj.Status.LastSyncTime = &now
+	// Retry status update with exponential backoff to handle conflicts
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		// Fetch the latest version of the client to avoid conflicts
+		var latestClient keycloakv1alpha1.Client
+		if err := r.Get(ctx, client.ObjectKeyFromObject(clientObj), &latestClient); err != nil {
+			log.Error(err, "Failed to fetch latest Client for status update")
+			return ctrl.Result{}, err
+		}
 
-	if err := r.Status().Update(ctx, clientObj); err != nil {
-		log.Error(err, "Failed to update Client status")
-		return ctrl.Result{}, err
+		// Update status on the latest version
+		latestClient.Status.Ready = ready
+		latestClient.Status.RealmReady = realmReady
+		latestClient.Status.Message = message
+		now := metav1.NewTime(time.Now())
+		latestClient.Status.LastSyncTime = &now
+
+		// Preserve ClientUUID if it was set in the original object
+		if clientObj.Status.ClientUUID != "" {
+			latestClient.Status.ClientUUID = clientObj.Status.ClientUUID
+		}
+
+		if err := r.Status().Update(ctx, &latestClient); err != nil {
+			if errors.IsConflict(err) && i < maxRetries-1 {
+				log.V(1).Info("Status update conflict, retrying", "attempt", i+1, "client", clientObj.Name)
+				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond) // Simple exponential backoff
+				continue
+			}
+			log.Error(err, "Failed to update Client status after retries")
+			return ctrl.Result{}, err
+		}
+
+		// Success - update the original object's status to reflect what was saved
+		clientObj.Status = latestClient.Status
+		break
 	}
 
+	// Requeue after 10 sec for periodic sync
 	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
