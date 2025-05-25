@@ -10,11 +10,14 @@ spec:
     name: realm-sample
     # namespace: default  # Optional, defaults to same namespace
   clientId: client-sample
+  enabled: true
   name: "My Application"
   description: "My application"
-  enabled: true
-  #publicClient: false
-  #redirectUris:
-  #  - "https://myapp.example.com/callback"
-  #webOrigins:
-  #  - "https://myapp.example.com"
+  publicClient: false
+  standardFlowEnabled: true
+  redirectUris:
+    - "https://myapp.example.com/callback"
+  postLogoutRedirectUris:
+    - "https://myapp.example.com/logout"
+  webOrigins:
+    - "+"

@@ -163,6 +163,7 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 		{"enabled", keycloakClient.Enabled, clientObj.Spec.Enabled},
 		{"clientAuthenticatorType", keycloakClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
 		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
+		{"standardFlowEnabled", keycloakClient.StandardFlowEnabled, clientObj.Spec.StandardFlowEnabled},
 	}
 
 	for _, field := range fields {
@@ -183,6 +184,10 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 
 	if !slicesEqual(keycloakClient.WebOrigins, clientObj.Spec.WebOrigins) {
 		diffs = append(diffs, fmt.Sprintf("webOrigins: %v -> %v", keycloakClient.WebOrigins, clientObj.Spec.WebOrigins))
+	}
+
+	if !slicesEqual(keycloakClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris) {
+		diffs = append(diffs, fmt.Sprintf("webOrigins: %v -> %v", keycloakClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris))
 	}
 
 	return diffs
@@ -214,6 +219,10 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 	if keycloakClient == nil {
 		log.Info("Creating client in Keycloak", "client", clientObj.Spec.ClientID, "realm", realm.Name)
 
+		newClientAttributes := &keycloak.OpenidClientAttributes{
+			PostLogoutRedirectUris: clientObj.Spec.PostLogoutRedirectUris,
+		}
+
 		newClient := &keycloak.OpenidClient{
 			RealmId:                 realm.Name,
 			ClientId:                clientObj.Spec.ClientID,
@@ -222,8 +231,10 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			Enabled:                 clientObj.Spec.Enabled,
 			ClientAuthenticatorType: clientObj.Spec.ClientAuthenticatorType,
 			PublicClient:            clientObj.Spec.PublicClient,
+			StandardFlowEnabled:     clientObj.Spec.StandardFlowEnabled,
 			ValidRedirectUris:       clientObj.Spec.RedirectUris,
 			WebOrigins:              clientObj.Spec.WebOrigins,
+			Attributes:              *newClientAttributes,
 		}
 
 		// Create the client (returns only error)
@@ -265,8 +276,10 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		updatedClient.Enabled = clientObj.Spec.Enabled
 		updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
 		updatedClient.PublicClient = clientObj.Spec.PublicClient
+		updatedClient.StandardFlowEnabled = clientObj.Spec.StandardFlowEnabled
 		updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris
 		updatedClient.WebOrigins = clientObj.Spec.WebOrigins
+		updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
 
 		if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
 			log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)

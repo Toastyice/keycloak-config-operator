@@ -92,6 +92,11 @@ func (in *ClientSpec) DeepCopyInto(out *ClientSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.PostLogoutRedirectUris != nil {
+		in, out := &in.PostLogoutRedirectUris, &out.PostLogoutRedirectUris
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.WebOrigins != nil {
 		in, out := &in.WebOrigins, &out.WebOrigins
 		*out = make([]string, len(*in))

@@ -53,7 +53,9 @@ spec:
           metadata:
             type: object
           spec:
-            description: ClientSpec defines the desired state of Client
+            description: |-
+              ClientSpec defines the desired state of Client
+              if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
             properties:
               clientAuthenticatorType:
                 default: client-secret
@@ -76,6 +78,11 @@ spec:
               name:
                 description: Name is the display name of the client
                 type: string
+              postLogoutRedirectUris:
+                default: []
+                items:
+                  type: string
+                type: array
               publicClient:
                 description: PublicClient indicates if this is a public client
                 type: boolean
@@ -94,11 +101,16 @@ spec:
                 - name
                 type: object
               redirectUris:
+                default: []
                 description: RedirectUris is a list of valid redirect URIs
                 items:
                   type: string
                 type: array
+              standardFlowEnabled:
+                default: true
+                type: boolean
               webOrigins:
+                default: []
                 description: WebOrigins is a list of allowed web origins
                 items:
                   type: string
@@ -107,6 +119,15 @@ spec:
             - clientId
             - realmRef
             type: object
+            x-kubernetes-validations:
+            - message: redirectUris can only be set when standardFlowEnabled is true
+              rule: self.standardFlowEnabled || size(self.redirectUris) == 0
+            - message: postLogoutRedirectUris can only be set when standardFlowEnabled
+                is true
+              rule: self.standardFlowEnabled || size(self.postLogoutRedirectUris)
+                == 0
+            - message: webOrigins can only be set when standardFlowEnabled is true
+              rule: self.standardFlowEnabled || size(self.webOrigins) == 0
           status:
             description: |-
               ClientStatus defines the observed state of Client

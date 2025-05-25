@@ -5,6 +5,10 @@ import (
 )
 
 // ClientSpec defines the desired state of Client
+// if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
+// +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.redirectUris) == 0",message="redirectUris can only be set when standardFlowEnabled is true"
+// +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.postLogoutRedirectUris) == 0",message="postLogoutRedirectUris can only be set when standardFlowEnabled is true"
+// +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.webOrigins) == 0",message="webOrigins can only be set when standardFlowEnabled is true"
 type ClientSpec struct {
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
@@ -35,15 +39,25 @@ type ClientSpec struct {
 
 	// PublicClient indicates if this is a public client
 	// +optional
-	PublicClient bool `json:"publicClient,omitempty"`
+	PublicClient bool `json:"publicClient"`
+
+	// +optional
+	// +kubebuilder:default=true
+	StandardFlowEnabled bool `json:"standardFlowEnabled"`
 
 	// RedirectUris is a list of valid redirect URIs
 	// +optional
-	RedirectUris []string `json:"redirectUris,omitempty"`
+	// +kubebuilder:default={}
+	RedirectUris []string `json:"redirectUris"`
+
+	// +optional
+	// +kubebuilder:default={}
+	PostLogoutRedirectUris []string `json:"postLogoutRedirectUris"`
 
 	// WebOrigins is a list of allowed web origins
 	// +optional
-	WebOrigins []string `json:"webOrigins,omitempty"`
+	// +kubebuilder:default={}
+	WebOrigins []string `json:"webOrigins"`
 }
 
 // RealmReference defines a reference to a Realm resource
