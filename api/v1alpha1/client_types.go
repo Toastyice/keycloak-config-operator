@@ -70,6 +70,7 @@ type ClientSpec struct {
 	ImplicitFlowEnabled bool `json:"implicitFlowEnabled"`
 
 	// +optional
+	// +kubebuilder:default=false
 	ServiceAccountsEnabled bool `json:"serviceAccountsEnabled"`
 
 	// +optional

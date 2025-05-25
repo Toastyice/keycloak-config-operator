@@ -127,6 +127,7 @@ spec:
                   type: object
                 type: array
               serviceAccountsEnabled:
+                default: false
                 type: boolean
               standardFlowEnabled:
                 default: true

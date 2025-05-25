@@ -1,3 +1,16 @@
+---
+apiVersion: keycloak.schella.network/v1alpha1
+kind: Client
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: client-minimal
+spec:
+  realmRef:
+    name: realm-sample
+  clientId: client-minimal
+---
 apiVersion: keycloak.schella.network/v1alpha1
 kind: Client
 metadata:
@@ -30,18 +43,3 @@ spec:
     - name: admin
       description: Full administrative access to all system resources
     - name: editor
-      description: Can create, edit, and publish content
-    - name: viewer
-      description: Read-only access to view content and data
-    - name: moderator
-      description: Can moderate user content and manage discussions
-    - name: analyst
-      description: Access to analytics and reporting tools
-    - name: manager
-      description: Team management and resource allocation permissions
-    - name: developer
-      description: Development environment access and code deployment
-    - name: tester
-      description: Quality assurance and testing environment access
-    - name: support
-      description: Customer support and help desk functions

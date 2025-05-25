@@ -367,13 +367,45 @@ func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, clientObj *
 		desiredRoles[roleSpec.Name] = roleSpec
 	}
 
-	log.V(1).Info("Role reconciliation",
+	log.V(1).Info("Role reconciliation starting",
 		"client", clientObj.Spec.ClientID,
 		"existingRoleCount", len(existingRoles),
 		"desiredRoleCount", len(desiredRoles),
 		"trackedRoleCount", len(clientObj.Status.RoleUUIDs))
 
-	// Step 1: Create or update desired roles
+	// Step 1: Clean up tracking map FIRST - remove any roles that are not desired
+	// This handles the case where a role was deleted from both Keycloak and spec
+	for trackedRoleName := range clientObj.Status.RoleUUIDs {
+		if _, stillDesired := desiredRoles[trackedRoleName]; !stillDesired {
+			log.Info("Removing role UUID from tracking (no longer desired)",
+				"role", trackedRoleName,
+				"uuid", clientObj.Status.RoleUUIDs[trackedRoleName])
+			delete(clientObj.Status.RoleUUIDs, trackedRoleName)
+		}
+	}
+
+	// Step 2: Delete roles that exist in Keycloak but are not desired
+	for _, existingRole := range existingRoles {
+		if _, stillDesired := desiredRoles[existingRole.Name]; !stillDesired {
+			log.Info("Deleting client role not in spec",
+				"role", existingRole.Name,
+				"client", clientObj.Spec.ClientID,
+				"uuid", existingRole.Id)
+
+			if err := r.KeycloakClient.DeleteRole(ctx, realm.Name, existingRole.Id); err != nil {
+				if !keycloak.ErrorIs404(err) {
+					log.Error(err, "Failed to delete role from Keycloak", "role", existingRole.Name, "uuid", existingRole.Id)
+					return fmt.Errorf("failed to delete role %s: %w", existingRole.Name, err)
+				}
+				log.Info("Role was already deleted from Keycloak", "role", existingRole.Name)
+			} else {
+				log.Info("Successfully deleted client role from Keycloak", "role", existingRole.Name)
+			}
+			// Note: We already removed this from tracking in Step 1
+		}
+	}
+
+	// Step 3: Create or update desired roles
 	for roleName, roleSpec := range desiredRoles {
 		if existingRole, exists := existingRoleMap[roleName]; exists {
 			// Role exists, check if it needs updating
@@ -418,41 +450,9 @@ func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, clientObj *
 				return fmt.Errorf("failed to create role %s: %w", roleName, err)
 			}
 
-			// Store the UUID (CreateRole sets the Id field in the role struct)
+			// Store the UUID
 			clientObj.Status.RoleUUIDs[roleName] = newRole.Id
 			log.Info("Successfully created client role", "role", roleName, "uuid", newRole.Id)
-		}
-	}
-
-	// Step 2: Delete roles that exist in Keycloak but are not in the desired spec
-	for _, existingRole := range existingRoles {
-		if _, stillDesired := desiredRoles[existingRole.Name]; !stillDesired {
-			log.Info("Deleting client role not in spec", "role", existingRole.Name, "client", clientObj.Spec.ClientID, "uuid", existingRole.Id)
-
-			if err := r.KeycloakClient.DeleteRole(ctx, realm.Name, existingRole.Id); err != nil {
-				if !keycloak.ErrorIs404(err) {
-					log.Error(err, "Failed to delete role from Keycloak", "role", existingRole.Name, "uuid", existingRole.Id)
-					return fmt.Errorf("failed to delete role %s: %w", existingRole.Name, err)
-				}
-				// Role was already deleted, continue
-				log.Info("Role was already deleted from Keycloak", "role", existingRole.Name)
-			} else {
-				log.Info("Successfully deleted client role from Keycloak", "role", existingRole.Name)
-			}
-
-			// Remove from our tracking map
-			delete(clientObj.Status.RoleUUIDs, existingRole.Name)
-		}
-	}
-
-	// Step 3: Clean up any stale entries in our tracking map
-	// (roles that we think exist but actually don't exist in Keycloak anymore)
-	for trackedRoleName := range clientObj.Status.RoleUUIDs {
-		if _, existsInKeycloak := existingRoleMap[trackedRoleName]; !existsInKeycloak {
-			if _, stillDesired := desiredRoles[trackedRoleName]; !stillDesired {
-				log.Info("Removing stale role UUID from tracking", "role", trackedRoleName)
-				delete(clientObj.Status.RoleUUIDs, trackedRoleName)
-			}
 		}
 	}
 
@@ -538,26 +538,17 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 			latestClient.Status.ClientUUID = clientObj.Status.ClientUUID
 		}
 
-		// More robust approach: Preserve RoleUUIDs - use the most recent version
-		if clientObj.Status.RoleUUIDs != nil && len(clientObj.Status.RoleUUIDs) > 0 {
-			// Use the roles from our reconciliation - this is the most up-to-date
+		// ALWAYS use the RoleUUIDs from the current reconciliation
+		// This is the authoritative source after reconciliation
+		if clientObj.Status.RoleUUIDs != nil {
 			latestClient.Status.RoleUUIDs = clientObj.Status.RoleUUIDs
 			log.V(1).Info("Using RoleUUIDs from current reconciliation",
 				"client", clientObj.Name,
 				"roleCount", len(clientObj.Status.RoleUUIDs))
-		} else if latestClient.Status.RoleUUIDs != nil && len(latestClient.Status.RoleUUIDs) > 0 {
-			// Keep existing roles if we don't have new ones
-			// This handles the case where another reconciliation might have updated roles
-			log.V(1).Info("Preserving existing RoleUUIDs from cluster",
-				"client", clientObj.Name,
-				"roleCount", len(latestClient.Status.RoleUUIDs))
-			// latestClient.Status.RoleUUIDs is already set from the fetched object
 		} else {
-			// Initialize empty map if both are nil/empty
-			if latestClient.Status.RoleUUIDs == nil {
-				latestClient.Status.RoleUUIDs = make(map[string]string)
-			}
-			log.V(1).Info("No RoleUUIDs to preserve, using empty map", "client", clientObj.Name)
+			// Initialize empty map if nil
+			latestClient.Status.RoleUUIDs = make(map[string]string)
+			log.V(1).Info("Initializing empty RoleUUIDs map", "client", clientObj.Name)
 		}
 
 		if err := r.Status().Update(ctx, &latestClient); err != nil {
@@ -573,8 +564,7 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 		// Success - update the original object's status to reflect what was saved
 		clientObj.Status = latestClient.Status
 
-		// Add debug logging to confirm what was saved
-		log.Info("Status updated successfully",
+		log.V(1).Info("Status updated successfully",
 			"client", clientObj.Name,
 			"ready", latestClient.Status.Ready,
 			"message", latestClient.Status.Message,
