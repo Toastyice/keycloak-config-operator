@@ -58,6 +58,10 @@ spec:
               if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
               if publicClient is true serviceAccountRoles can't be true
             properties:
+              adminUrl:
+                type: string
+              alwaysDisplayInConsole:
+                type: boolean
               baseUrl:
                 type: string
                 x-kubernetes-validations:

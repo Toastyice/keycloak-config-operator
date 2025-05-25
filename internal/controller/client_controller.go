@@ -164,6 +164,8 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 		{"enabled", keycloakClient.Enabled, clientObj.Spec.Enabled},
 		{"rootUrl", derefStringPtr(keycloakClient.RootUrl), clientObj.Spec.RootUrl},
 		{"baseUrl", keycloakClient.BaseUrl, clientObj.Spec.BaseUrl},
+		{"adminUrl", keycloakClient.AdminUrl, clientObj.Spec.AdminUrl},
+		{"alwaysDisplayInConsole", keycloakClient.AlwaysDisplayInConsole, clientObj.Spec.AlwaysDisplayInConsole},
 		{"clientAuthenticatorType", keycloakClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
 		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
 		{"standardFlowEnabled", keycloakClient.StandardFlowEnabled, clientObj.Spec.StandardFlowEnabled},
@@ -259,6 +261,8 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			Enabled:                   clientObj.Spec.Enabled,
 			RootUrl:                   stringPtr(clientObj.Spec.RootUrl),
 			BaseUrl:                   clientObj.Spec.BaseUrl,
+			AdminUrl:                  clientObj.Spec.AdminUrl,
+			AlwaysDisplayInConsole:    clientObj.Spec.AlwaysDisplayInConsole,
 			ClientAuthenticatorType:   clientObj.Spec.ClientAuthenticatorType,
 			PublicClient:              clientObj.Spec.PublicClient,
 			ValidRedirectUris:         clientObj.Spec.RedirectUris,
@@ -307,6 +311,8 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			updatedClient.Enabled = clientObj.Spec.Enabled
 			updatedClient.RootUrl = stringPtr(clientObj.Spec.RootUrl)
 			updatedClient.BaseUrl = clientObj.Spec.BaseUrl
+			updatedClient.AdminUrl = clientObj.Spec.AdminUrl
+			updatedClient.AlwaysDisplayInConsole = clientObj.Spec.AlwaysDisplayInConsole
 			updatedClient.ClientAuthenticatorType = clientObj.Spec.ClientAuthenticatorType
 			updatedClient.PublicClient = clientObj.Spec.PublicClient
 			updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris

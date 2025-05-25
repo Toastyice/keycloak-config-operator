@@ -28,6 +28,8 @@ spec:
   description: "My application"
   rootUrl: https://domain.example
   baseUrl: https://domain.example/fallback
+  adminUrl: https://secure.domain.example
+  alwaysDisplayInConsole: false
   publicClient: false
   standardFlowEnabled: true
   directAccessGrantsEnabled: true

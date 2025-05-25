@@ -41,6 +41,12 @@ type ClientSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || self.startsWith('http://') || self.startsWith('https://')",message="baseUrl must be a valid HTTP or HTTPS URL"
 	BaseUrl string `json:"baseUrl,omitempty"`
 
+	// +optional
+	AdminUrl string `json:"adminUrl,omitempty"`
+
+	// +optional
+	AlwaysDisplayInConsole bool `json:"alwaysDisplayInConsole,omitempty"`
+
 	// ClientAuthenticatorType specifies the client authenticator type
 	// +optional
 	// +kubebuilder:default="client-secret"
