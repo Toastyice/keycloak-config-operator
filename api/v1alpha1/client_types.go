@@ -9,6 +9,8 @@ import (
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.redirectUris) == 0",message="redirectUris can only be set when standardFlowEnabled is true"
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.postLogoutRedirectUris) == 0",message="postLogoutRedirectUris can only be set when standardFlowEnabled is true"
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.webOrigins) == 0",message="webOrigins can only be set when standardFlowEnabled is true"
+// if publicClient is true serviceAccountRoles can't be true
+// +kubebuilder:validation:XValidation:rule="!self.publicClient || !self.serviceAccountsEnabled",message="serviceAccountsEnabled must be false when publicClient is true"
 type ClientSpec struct {
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
@@ -63,6 +65,15 @@ type ClientSpec struct {
 	// +optional
 	// +kubebuilder:default=true
 	DirectAccessGrantsEnabled bool `json:"directAccessGrantsEnabled"`
+
+	// +optional
+	ImplicitFlowEnabled bool `json:"implicitFlowEnabled"`
+
+	// +optional
+	ServiceAccountsEnabled bool `json:"serviceAccountsEnabled"`
+
+	// +optional
+	Oauth2DeviceAuthorizationGrantEnabled bool `json:"oauth2DeviceAuthorizationGrantEnabled"`
 }
 
 // RealmReference defines a reference to a Realm resource

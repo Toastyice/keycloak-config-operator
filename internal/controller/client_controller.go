@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	keycloakTypes "github.com/keycloak/terraform-provider-keycloak/keycloak/types"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	"github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
@@ -165,6 +166,9 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
 		{"standardFlowEnabled", keycloakClient.StandardFlowEnabled, clientObj.Spec.StandardFlowEnabled},
 		{"directAccessGrantsEnabled", keycloakClient.DirectAccessGrantsEnabled, clientObj.Spec.DirectAccessGrantsEnabled},
+		{"implicitFlowEnabled", keycloakClient.ImplicitFlowEnabled, clientObj.Spec.ImplicitFlowEnabled},
+		{"serviceAccountsEnabled", keycloakClient.ServiceAccountsEnabled, clientObj.Spec.ServiceAccountsEnabled},
+		{"oauth2DeviceAuthorizationGrantEnabled", keycloakClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)},
 	}
 
 	for _, field := range fields {
@@ -221,7 +225,8 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		log.Info("Creating client in Keycloak", "client", clientObj.Spec.ClientID, "realm", realm.Name)
 
 		newClientAttributes := &keycloak.OpenidClientAttributes{
-			PostLogoutRedirectUris: clientObj.Spec.PostLogoutRedirectUris,
+			PostLogoutRedirectUris:                clientObj.Spec.PostLogoutRedirectUris,
+			Oauth2DeviceAuthorizationGrantEnabled: keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled),
 		}
 
 		newClient := &keycloak.OpenidClient{
@@ -237,6 +242,8 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			Attributes:                *newClientAttributes,
 			StandardFlowEnabled:       clientObj.Spec.StandardFlowEnabled,
 			DirectAccessGrantsEnabled: clientObj.Spec.DirectAccessGrantsEnabled,
+			ImplicitFlowEnabled:       clientObj.Spec.ImplicitFlowEnabled,
+			ServiceAccountsEnabled:    clientObj.Spec.ServiceAccountsEnabled,
 		}
 
 		// Create the client (returns only error)
@@ -280,9 +287,13 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		updatedClient.PublicClient = clientObj.Spec.PublicClient
 		updatedClient.ValidRedirectUris = clientObj.Spec.RedirectUris
 		updatedClient.WebOrigins = clientObj.Spec.WebOrigins
-		updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
 		updatedClient.StandardFlowEnabled = clientObj.Spec.StandardFlowEnabled
 		updatedClient.DirectAccessGrantsEnabled = clientObj.Spec.DirectAccessGrantsEnabled
+		updatedClient.ImplicitFlowEnabled = clientObj.Spec.ImplicitFlowEnabled
+		updatedClient.ServiceAccountsEnabled = clientObj.Spec.ServiceAccountsEnabled
+
+		updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
+		updatedClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)
 
 		if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
 			log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)

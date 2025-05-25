@@ -56,6 +56,7 @@ spec:
             description: |-
               ClientSpec defines the desired state of Client
               if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
+              if publicClient is true serviceAccountRoles can't be true
             properties:
               clientAuthenticatorType:
                 default: client-secret
@@ -78,9 +79,13 @@ spec:
                 default: true
                 description: Enabled indicates whether this client is enabled
                 type: boolean
+              implicitFlowEnabled:
+                type: boolean
               name:
                 description: Name is the display name of the client
                 type: string
+              oauth2DeviceAuthorizationGrantEnabled:
+                type: boolean
               postLogoutRedirectUris:
                 default: []
                 items:
@@ -110,6 +115,8 @@ spec:
                 items:
                   type: string
                 type: array
+              serviceAccountsEnabled:
+                type: boolean
               standardFlowEnabled:
                 default: true
                 type: boolean
@@ -132,6 +139,8 @@ spec:
                 == 0
             - message: webOrigins can only be set when standardFlowEnabled is true
               rule: self.standardFlowEnabled || size(self.webOrigins) == 0
+            - message: serviceAccountsEnabled must be false when publicClient is true
+              rule: '!self.publicClient || !self.serviceAccountsEnabled'
           status:
             description: |-
               ClientStatus defines the observed state of Client

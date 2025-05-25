@@ -16,9 +16,13 @@ spec:
   publicClient: false
   standardFlowEnabled: true
   directAccessGrantsEnabled: true
+  implicitFlowEnabled: false
+  serviceAccountsEnabled: false
+  oauth2DeviceAuthorizationGrantEnabled: false
   redirectUris:
     - "https://myapp.example.com/callback"
   postLogoutRedirectUris:
     - "https://myapp.example.com/logout"
+    - "http://localhost:8080/logout"
   webOrigins:
     - "+"
