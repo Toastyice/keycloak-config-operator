@@ -732,7 +732,7 @@ func (r *ClientReconciler) deleteClient(ctx context.Context, clientObj *keycloak
 func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloakv1alpha1.Client, result ReconcileResult) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("client", clientObj.Name)
 
-	for i := 0; i < maxStatusRetries; i++ {
+	for i := range maxStatusRetries {
 		if err := r.performStatusUpdate(ctx, clientObj, result); err != nil {
 			if errors.IsConflict(err) && i < maxStatusRetries-1 {
 				logger.V(1).Info("Status update conflict, retrying", "attempt", i+1)
