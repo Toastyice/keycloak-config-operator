@@ -4,17 +4,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ClientSpec defines the desired state of Client
-// if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.redirectUris) == 0",message="redirectUris can only be set when standardFlowEnabled is true"
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.postLogoutRedirectUris) == 0",message="postLogoutRedirectUris can only be set when standardFlowEnabled is true"
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.webOrigins) == 0",message="webOrigins can only be set when standardFlowEnabled is true"
-// if publicClient is true serviceAccountRoles can't be true
 // +kubebuilder:validation:XValidation:rule="!self.publicClient || !self.serviceAccountsEnabled",message="serviceAccountsEnabled must be false when publicClient is true"
-// displayOnConsentScreen can only be enabled when consentRequired is true
 // +kubebuilder:validation:XValidation:rule="!self.displayOnConsentScreen || self.consentRequired",message="displayOnConsentScreen can only be true when consentRequired is true"
-// consentScreenText can only be set when displayOnConsentScreen is true
-// +kubebuilder:validation:XValidation:rule="!has(self.consentScreenText) || self.consentScreenText == ” || self.displayOnConsentScreen",message="consentScreenText can only be set when displayOnConsentScreen is true"
+// +kubebuilder:validation:XValidation:rule=`!has(self.consentScreenText) || size(self.consentScreenText) == 0  || self.displayOnConsentScreen`,message="consentScreenText can only be set when displayOnConsentScreen is true"
+// +kubebuilder:validation:XValidation:rule=`!has(self.frontChannelLogoutUrl) || size(self.frontChannelLogoutUrl) == 0 || self.frontChannelLogoutEnabled`,message="frontChannelLogoutUrl can only be set when frontChannelLogoutEnabled is true"
+// +kubebuilder:validation:XValidation:rule=`!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl) == 0 || !self.frontChannelLogoutEnabled`,message="backchannelLogoutUrl can only be set when frontChannelLogoutEnabled is false"
+// +kubebuilder:validation:XValidation:rule=`!self.frontChannelLogoutEnabled || !self.backchannelLogoutSessionRequired`,message="backchannelLogoutSessionRequired must be false when frontChannelLogoutEnabled is true"
+// +kubebuilder:validation:XValidation:rule=`!self.frontChannelLogoutEnabled || !self.backchannelLogoutRevokeOfflineTokens`,message="backchannelLogoutRevokeOfflineTokens must be false when frontChannelLogoutEnabled is true"
 type ClientSpec struct {
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
@@ -42,7 +41,7 @@ type ClientSpec struct {
 	RootUrl string `json:"rootUrl,omitempty"`
 
 	// +optional
-	// +kubebuilder:validation:XValidation:rule="self == '' || self.startsWith('http://') || self.startsWith('https://')",message="baseUrl must be a valid HTTP or HTTPS URL"
+	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="baseUrl must be a valid HTTP or HTTPS URL"
 	BaseUrl string `json:"baseUrl,omitempty"`
 
 	// +optional
@@ -111,6 +110,31 @@ type ClientSpec struct {
 	// ConsentScreenText is the text displayed on the consent screen
 	// +optional
 	ConsentScreenText string `json:"consentScreenText"`
+
+	// When true, logout requires a browser to send the request to the client to configured Front-channel logout URL as specified in the OIDC Front-channel logout specification. When false, server can perform a background invocation for logout as long as either the Backchannel-logout URL is configured or Admin URL is configured.
+	// +optional
+	// +kubebuilder:default=false
+	FrontChannelLogoutEnabled bool `json:"frontChannelLogoutEnabled"`
+
+	// URL that will cause the client to log itself out when a logout request is sent to this realm (via end_session_endpoint). If not provided, it defaults to the base url.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="frontchannelLogoutUrl must be a valid HTTP or HTTPS URL"
+	FrontchannelLogoutUrl string `json:"frontChannelLogoutUrl"`
+
+	// URL that will cause the client to log itself out when a logout request is sent to this realm (via end_session_endpoint). The logout is done by sending logout token as specified in the OIDC Backchannel logout specification. If omitted, the logout request might be sent to the specified 'Admin URL' (if configured) in the format specific to Keycloak/RH-SSO adapters. If even 'Admin URL' is not configured, no logout request will be sent to the client.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="backchannelLogoutUrl must be a valid HTTP or HTTPS URL"
+	BackchannelLogoutUrl string `json:"backchannelLogoutUrl"`
+
+	// Specifying whether a sid (session ID) Claim is included in the Logout Token when the Backchannel Logout URL is used.
+	// +optional
+	// +kubebuilder:default=false
+	BackchannelLogoutSessionRequired bool `json:"backchannelLogoutSessionRequired"`
+
+	// Specifying whether a "revoke_offline_access" event is included in the Logout Token when the Backchannel Logout URL is used. Keycloak will revoke offline sessions when receiving a Logout Token with this event.
+	// +optional
+	// +kubebuilder:default=false
+	BackchannelLogoutRevokeOfflineTokens bool `json:"backchannelLogoutRevokeOfflineTokens"`
 }
 
 // RealmReference defines a reference to a Realm resource

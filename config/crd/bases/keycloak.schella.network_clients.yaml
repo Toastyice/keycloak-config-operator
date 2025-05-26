@@ -53,22 +53,40 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              ClientSpec defines the desired state of Client
-              if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
-              if publicClient is true serviceAccountRoles can't be true
-              displayOnConsentScreen can only be enabled when consentRequired is true
-              consentScreenText can only be set when displayOnConsentScreen is true
             properties:
               adminUrl:
                 type: string
               alwaysDisplayInConsole:
                 type: boolean
+              backchannelLogoutRevokeOfflineTokens:
+                default: false
+                description: Specifying whether a "revoke_offline_access" event is
+                  included in the Logout Token when the Backchannel Logout URL is
+                  used. Keycloak will revoke offline sessions when receiving a Logout
+                  Token with this event.
+                type: boolean
+              backchannelLogoutSessionRequired:
+                default: false
+                description: Specifying whether a sid (session ID) Claim is included
+                  in the Logout Token when the Backchannel Logout URL is used.
+                type: boolean
+              backchannelLogoutUrl:
+                description: URL that will cause the client to log itself out when
+                  a logout request is sent to this realm (via end_session_endpoint).
+                  The logout is done by sending logout token as specified in the OIDC
+                  Backchannel logout specification. If omitted, the logout request
+                  might be sent to the specified 'Admin URL' (if configured) in the
+                  format specific to Keycloak/RH-SSO adapters. If even 'Admin URL'
+                  is not configured, no logout request will be sent to the client.
+                type: string
+                x-kubernetes-validations:
+                - message: backchannelLogoutUrl must be a valid HTTP or HTTPS URL
+                  rule: size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')
               baseUrl:
                 type: string
                 x-kubernetes-validations:
                 - message: baseUrl must be a valid HTTP or HTTPS URL
-                  rule: self == '' || self.startsWith('http://') || self.startsWith('https://')
+                  rule: size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')
               clientAuthenticatorType:
                 default: client-secret
                 description: ClientAuthenticatorType specifies the client authenticator
@@ -100,6 +118,22 @@ spec:
                 default: true
                 description: Enabled indicates whether this client is enabled
                 type: boolean
+              frontChannelLogoutEnabled:
+                default: false
+                description: When true, logout requires a browser to send the request
+                  to the client to configured Front-channel logout URL as specified
+                  in the OIDC Front-channel logout specification. When false, server
+                  can perform a background invocation for logout as long as either
+                  the Backchannel-logout URL is configured or Admin URL is configured.
+                type: boolean
+              frontChannelLogoutUrl:
+                description: URL that will cause the client to log itself out when
+                  a logout request is sent to this realm (via end_session_endpoint).
+                  If not provided, it defaults to the base url.
+                type: string
+                x-kubernetes-validations:
+                - message: frontchannelLogoutUrl must be a valid HTTP or HTTPS URL
+                  rule: size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')
               implicitFlowEnabled:
                 type: boolean
               loginTheme:
@@ -184,8 +218,22 @@ spec:
               rule: '!self.displayOnConsentScreen || self.consentRequired'
             - message: consentScreenText can only be set when displayOnConsentScreen
                 is true
-              rule: '!has(self.consentScreenText) || self.consentScreenText == ''''
-                || self.displayOnConsentScreen'
+              rule: '!has(self.consentScreenText) || size(self.consentScreenText)
+                == 0  || self.displayOnConsentScreen'
+            - message: frontChannelLogoutUrl can only be set when frontChannelLogoutEnabled
+                is true
+              rule: '!has(self.frontChannelLogoutUrl) || size(self.frontChannelLogoutUrl)
+                == 0 || self.frontChannelLogoutEnabled'
+            - message: backchannelLogoutUrl can only be set when frontChannelLogoutEnabled
+                is false
+              rule: '!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl)
+                == 0 || !self.frontChannelLogoutEnabled'
+            - message: backchannelLogoutSessionRequired must be false when frontChannelLogoutEnabled
+                is true
+              rule: '!self.frontChannelLogoutEnabled || !self.backchannelLogoutSessionRequired'
+            - message: backchannelLogoutRevokeOfflineTokens must be false when frontChannelLogoutEnabled
+                is true
+              rule: '!self.frontChannelLogoutEnabled || !self.backchannelLogoutRevokeOfflineTokens'
           status:
             description: ClientStatus defines the observed state of Client
             properties:
