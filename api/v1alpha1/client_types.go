@@ -18,95 +18,107 @@ type ClientSpec struct {
 	// +kubebuilder:validation:Required
 	RealmRef RealmReference `json:"realmRef"`
 
-	// ClientID is the unique identifier for this client
+	// The client identifier registered with the identity provider.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="clientId is immutable"
 	ClientID string `json:"clientId"`
 
-	// Name is the display name of the client
+	// Specifies display name of the client. For example 'My Client'. Supports keys for localized values as well. For example: ${my_client}.
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Description of the client
+	// Specifies description of the client. For example 'My Client for TimeSheets'. Supports keys for localized values as well. For example: ${my_client_description}.
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// Enabled indicates whether this client is enabled
+	// Disabled clients cannot initiate a login or have obtained access tokens.
 	// +optional
 	// +kubebuilder:default=true
 	Enabled bool `json:"enabled,omitempty"`
-
-	// +optional
-	RootUrl string `json:"rootUrl,omitempty"`
-
-	// +optional
-	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="baseUrl must be a valid HTTP or HTTPS URL"
-	BaseUrl string `json:"baseUrl,omitempty"`
-
-	// +optional
-	AdminUrl string `json:"adminUrl,omitempty"`
-
-	// +optional
-	AlwaysDisplayInConsole bool `json:"alwaysDisplayInConsole,omitempty"`
 
 	// ClientAuthenticatorType specifies the client authenticator type
 	// +optional
 	// +kubebuilder:default="client-secret"
 	ClientAuthenticatorType string `json:"clientAuthenticatorType,omitempty"`
 
+	// Always list this client in the Account UI, even if the user does not have an active session.
+	// +optional
+	AlwaysDisplayInConsole bool `json:"alwaysDisplayInConsole,omitempty"`
+
+	// Root URL appended to relative URLs
+	// +optional
+	RootUrl string `json:"rootUrl,omitempty"`
+
+	// Default URL to use when the auth server needs to redirect or link back to the client.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="baseUrl must be a valid HTTP or HTTPS URL"
+	BaseUrl string `json:"baseUrl,omitempty"`
+
+	// Valid URI pattern a browser can redirect to after a successful login. Simple wildcards are allowed such as 'http://example.com/*'. Relative path can be specified too such as /my/relative/path/*. Relative paths are relative to the client root URL, or if none is specified the auth server root URL is used. For SAML, you must set valid URI patterns if you are relying on the consumer service URL embedded with the login request.
+	// +optional
+	// +kubebuilder:default={}
+	RedirectUris []string `json:"redirectUris"`
+
+	// Valid URI pattern a browser can redirect to after a successful logout. A value of '+' or an empty field will use the list of valid redirect uris. A value of '-' will not allow any post logout redirect uris. Simple wildcards are allowed such as 'http://example.com/*'. Relative path can be specified too such as /my/relative/path/*. Relative paths are relative to the client root URL, or if none is specified the auth server root URL is used.
+	// +optional
+	// +kubebuilder:default={}
+	PostLogoutRedirectUris []string `json:"postLogoutRedirectUris"`
+
+	// Allowed CORS origins. To permit all origins of Valid Redirect URIs, add '+'. This does not include the '*' wildcard though. To permit all origins, explicitly add '*'.
+	// +optional
+	// +kubebuilder:default={}
+	WebOrigins []string `json:"webOrigins"`
+
+	// URL to the admin interface of the client. Set this if the client supports the adapter REST API. This REST API allows the auth server to push revocation policies and other administrative tasks. Usually this is set to the base URL of the client.
+	// +optional
+	AdminUrl string `json:"adminUrl,omitempty"`
+
 	// PublicClient indicates if this is a public client
 	// +optional
 	// +kubebuilder:default=true
 	PublicClient bool `json:"publicClient"`
 
-	// RedirectUris is a list of valid redirect URIs
-	// +optional
-	// +kubebuilder:default={}
-	RedirectUris []string `json:"redirectUris"`
-
-	// +optional
-	// +kubebuilder:default={}
-	PostLogoutRedirectUris []string `json:"postLogoutRedirectUris"`
-
-	// WebOrigins is a list of allowed web origins
-	// +optional
-	// +kubebuilder:default={}
-	WebOrigins []string `json:"webOrigins"`
-
+	// This enables standard OpenID Connect redirect based authentication with authorization code. In terms of OpenID Connect or OAuth2 specifications, this enables support of 'Authorization Code Flow' for this client.
 	// +optional
 	// +kubebuilder:default=true
 	StandardFlowEnabled bool `json:"standardFlowEnabled"`
 
+	// This enables support for Direct Access Grants, which means that client has access to username/password of user and exchange it directly with Keycloak server for access token. In terms of OAuth2 specification, this enables support of 'Resource Owner Password Credentials Grant' for this client.
 	// +optional
 	// +kubebuilder:default=true
 	DirectAccessGrantsEnabled bool `json:"directAccessGrantsEnabled"`
 
+	// This enables support for OpenID Connect redirect based authentication without authorization code. In terms of OpenID Connect or OAuth2 specifications, this enables support of 'Implicit Flow' for this client.
 	// +optional
 	ImplicitFlowEnabled bool `json:"implicitFlowEnabled"`
 
+	// Allows you to authenticate this client to Keycloak and retrieve access token dedicated to this client. In terms of OAuth2 specification, this enables support of 'Client Credentials Grant' for this client.
 	// +optional
 	// +kubebuilder:default=false
 	ServiceAccountsEnabled bool `json:"serviceAccountsEnabled"`
 
+	// This enables support for OAuth 2.0 Device Authorization Grant, which means that client is an application on device that has limited input capabilities or lack a suitable browser.
 	// +optional
 	Oauth2DeviceAuthorizationGrantEnabled bool `json:"oauth2DeviceAuthorizationGrantEnabled"`
 
 	// +optional
 	Roles []RoleSpec `json:"roles,omitempty"`
 
-	// The theme must exist in Keycloak
+	// The theme must exist in Keycloak. Select theme for login, OTP, grant, registration and forgot password pages.
 	// +optional
 	LoginTheme string `json:"loginTheme,omitempty"`
 
+	// If enabled, users have to consent to client access.
 	// +optional
 	// +kubebuilder:default=false
 	ConsentRequired bool `json:"consentRequired"`
 
+	// Applicable only if 'Consent Required' is on for this client. If this switch is off, the consent screen will contain just the consents corresponding to configured client scopes. If on, there will be also one item on the consent screen about this client itself.
 	// +optional
 	// +kubebuilder:default=false
 	DisplayOnConsentScreen bool `json:"displayOnConsentScreen"`
 
-	// ConsentScreenText is the text displayed on the consent screen
+	// Text that will be shown on the consent screen when this client scope is added to some client with consent required. Defaults to name of client scope if it is not filled.
 	// +optional
 	ConsentScreenText string `json:"consentScreenText"`
 

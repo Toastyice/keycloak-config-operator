@@ -55,12 +55,18 @@ spec:
           spec:
             properties:
               adminUrl:
+                description: URL to the admin interface of the client. Set this if
+                  the client supports the adapter REST API. This REST API allows the
+                  auth server to push revocation policies and other administrative
+                  tasks. Usually this is set to the base URL of the client.
                 type: string
               alwaysDisplayInConsole:
+                description: Always list this client in the Account UI, even if the
+                  user does not have an active session.
                 type: boolean
               backchannelLogoutRevokeOfflineTokens:
                 default: false
-                description: This Option is also valid when FrontChannelLogoutEnabled
+                description: This Option is also valid when FrontchannelLogoutEnabled
                   is enabled. Specifying whether a "revoke_offline_access" event is
                   included in the Logout Token when the Backchannel Logout URL is
                   used. Keycloak will revoke offline sessions when receiving a Logout
@@ -84,6 +90,8 @@ spec:
                 - message: backchannelLogoutUrl must be a valid HTTP or HTTPS URL
                   rule: size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')
               baseUrl:
+                description: Default URL to use when the auth server needs to redirect
+                  or link back to the client.
                 type: string
                 x-kubernetes-validations:
                 - message: baseUrl must be a valid HTTP or HTTPS URL
@@ -94,30 +102,44 @@ spec:
                   type
                 type: string
               clientId:
-                description: ClientID is the unique identifier for this client
+                description: The client identifier registered with the identity provider.
                 type: string
                 x-kubernetes-validations:
                 - message: clientId is immutable
                   rule: self == oldSelf
               consentRequired:
                 default: false
+                description: If enabled, users have to consent to client access.
                 type: boolean
               consentScreenText:
-                description: ConsentScreenText is the text displayed on the consent
-                  screen
+                description: Text that will be shown on the consent screen when this
+                  client scope is added to some client with consent required. Defaults
+                  to name of client scope if it is not filled.
                 type: string
               description:
-                description: Description of the client
+                description: 'Specifies description of the client. For example ''My
+                  Client for TimeSheets''. Supports keys for localized values as well.
+                  For example: ${my_client_description}.'
                 type: string
               directAccessGrantsEnabled:
                 default: true
+                description: This enables support for Direct Access Grants, which
+                  means that client has access to username/password of user and exchange
+                  it directly with Keycloak server for access token. In terms of OAuth2
+                  specification, this enables support of 'Resource Owner Password
+                  Credentials Grant' for this client.
                 type: boolean
               displayOnConsentScreen:
                 default: false
+                description: Applicable only if 'Consent Required' is on for this
+                  client. If this switch is off, the consent screen will contain just
+                  the consents corresponding to configured client scopes. If on, there
+                  will be also one item on the consent screen about this client itself.
                 type: boolean
               enabled:
                 default: true
-                description: Enabled indicates whether this client is enabled
+                description: Disabled clients cannot initiate a login or have obtained
+                  access tokens.
                 type: boolean
               frontchannelLogoutEnabled:
                 default: false
@@ -136,17 +158,34 @@ spec:
                 - message: frontchannelLogoutUrl must be a valid HTTP or HTTPS URL
                   rule: size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')
               implicitFlowEnabled:
+                description: This enables support for OpenID Connect redirect based
+                  authentication without authorization code. In terms of OpenID Connect
+                  or OAuth2 specifications, this enables support of 'Implicit Flow'
+                  for this client.
                 type: boolean
               loginTheme:
-                description: The theme must exist in Keycloak
+                description: The theme must exist in Keycloak. Select theme for login,
+                  OTP, grant, registration and forgot password pages.
                 type: string
               name:
-                description: Name is the display name of the client
+                description: 'Specifies display name of the client. For example ''My
+                  Client''. Supports keys for localized values as well. For example:
+                  ${my_client}.'
                 type: string
               oauth2DeviceAuthorizationGrantEnabled:
+                description: This enables support for OAuth 2.0 Device Authorization
+                  Grant, which means that client is an application on device that
+                  has limited input capabilities or lack a suitable browser.
                 type: boolean
               postLogoutRedirectUris:
                 default: []
+                description: Valid URI pattern a browser can redirect to after a successful
+                  logout. A value of '+' or an empty field will use the list of valid
+                  redirect uris. A value of '-' will not allow any post logout redirect
+                  uris. Simple wildcards are allowed such as 'http://example.com/*'.
+                  Relative path can be specified too such as /my/relative/path/*.
+                  Relative paths are relative to the client root URL, or if none is
+                  specified the auth server root URL is used.
                 items:
                   type: string
                 type: array
@@ -170,7 +209,13 @@ spec:
                 type: object
               redirectUris:
                 default: []
-                description: RedirectUris is a list of valid redirect URIs
+                description: Valid URI pattern a browser can redirect to after a successful
+                  login. Simple wildcards are allowed such as 'http://example.com/*'.
+                  Relative path can be specified too such as /my/relative/path/*.
+                  Relative paths are relative to the client root URL, or if none is
+                  specified the auth server root URL is used. For SAML, you must set
+                  valid URI patterns if you are relying on the consumer service URL
+                  embedded with the login request.
                 items:
                   type: string
                 type: array
@@ -186,16 +231,26 @@ spec:
                   type: object
                 type: array
               rootUrl:
+                description: Root URL appended to relative URLs
                 type: string
               serviceAccountsEnabled:
                 default: false
+                description: Allows you to authenticate this client to Keycloak and
+                  retrieve access token dedicated to this client. In terms of OAuth2
+                  specification, this enables support of 'Client Credentials Grant'
+                  for this client.
                 type: boolean
               standardFlowEnabled:
                 default: true
+                description: This enables standard OpenID Connect redirect based authentication
+                  with authorization code. In terms of OpenID Connect or OAuth2 specifications,
+                  this enables support of 'Authorization Code Flow' for this client.
                 type: boolean
               webOrigins:
                 default: []
-                description: WebOrigins is a list of allowed web origins
+                description: Allowed CORS origins. To permit all origins of Valid
+                  Redirect URIs, add '+'. This does not include the '*' wildcard though.
+                  To permit all origins, explicitly add '*'.
                 items:
                   type: string
                 type: array
