@@ -18,47 +18,8 @@ spec:
     - jsonPath: .spec.enabled
       name: Enabled
       type: boolean
-    - jsonPath: .spec.displayName
-      name: Display Name
-      type: string
-    - jsonPath: .spec.displayNameHtml
-      name: Display Name Html
-      type: string
-    - jsonPath: .spec.sslRequired
-      name: Ssl Required
-      type: string
     - jsonPath: .status.ready
       name: Ready
-      type: boolean
-    - jsonPath: .spec.userManagedAccess
-      name: UserManagedAccess
-      type: boolean
-    - jsonPath: .spec.organizationsEnabled
-      name: Organizations Enabled
-      type: boolean
-    - jsonPath: .spec.registrationAllowed
-      name: Registration Allowed
-      type: boolean
-    - jsonPath: .spec.resetPasswordAllowed
-      name: ResetPassword Allowed
-      type: boolean
-    - jsonPath: .spec.rememberMe
-      name: Remember Me
-      type: boolean
-    - jsonPath: .spec.registrationEmailAsUsername
-      name: Registration Email As Username
-      type: boolean
-    - jsonPath: .spec.loginWithEmailAllowed
-      name: Login With Email Allowed
-      type: boolean
-    - jsonPath: .spec.duplicateEmailsAllowed
-      name: Duplicate Emails Allowed
-      type: boolean
-    - jsonPath: .spec.verifyEmail
-      name: VerifyEmail
-      type: boolean
-    - jsonPath: .spec.editUsernameAllowed
-      name: Edit Username Allowed
       type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age

@@ -11,6 +11,10 @@ import (
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.webOrigins) == 0",message="webOrigins can only be set when standardFlowEnabled is true"
 // if publicClient is true serviceAccountRoles can't be true
 // +kubebuilder:validation:XValidation:rule="!self.publicClient || !self.serviceAccountsEnabled",message="serviceAccountsEnabled must be false when publicClient is true"
+// displayOnConsentScreen can only be enabled when consentRequired is true
+// +kubebuilder:validation:XValidation:rule="!self.displayOnConsentScreen || self.consentRequired",message="displayOnConsentScreen can only be true when consentRequired is true"
+// consentScreenText can only be set when displayOnConsentScreen is true
+// +kubebuilder:validation:XValidation:rule="!has(self.consentScreenText) || self.consentScreenText == ” || self.displayOnConsentScreen",message="consentScreenText can only be set when displayOnConsentScreen is true"
 type ClientSpec struct {
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
@@ -91,6 +95,22 @@ type ClientSpec struct {
 
 	// +optional
 	Roles []RoleSpec `json:"roles,omitempty"`
+
+	// The theme must exist in Keycloak
+	// +optional
+	LoginTheme string `json:"loginTheme,omitempty"`
+
+	// +optional
+	// +kubebuilder:default=false
+	ConsentRequired bool `json:"consentRequired"`
+
+	// +optional
+	// +kubebuilder:default=false
+	DisplayOnConsentScreen bool `json:"displayOnConsentScreen"`
+
+	// ConsentScreenText is the text displayed on the consent screen
+	// +optional
+	ConsentScreenText string `json:"consentScreenText"`
 }
 
 // RealmReference defines a reference to a Realm resource

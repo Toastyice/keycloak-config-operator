@@ -57,6 +57,8 @@ spec:
               ClientSpec defines the desired state of Client
               if standardFlowEnabled is false redirectUris, postLogoutRedirectUris, webOrigins are not allowed
               if publicClient is true serviceAccountRoles can't be true
+              displayOnConsentScreen can only be enabled when consentRequired is true
+              consentScreenText can only be set when displayOnConsentScreen is true
             properties:
               adminUrl:
                 type: string
@@ -78,11 +80,21 @@ spec:
                 x-kubernetes-validations:
                 - message: clientId is immutable
                   rule: self == oldSelf
+              consentRequired:
+                default: false
+                type: boolean
+              consentScreenText:
+                description: ConsentScreenText is the text displayed on the consent
+                  screen
+                type: string
               description:
                 description: Description of the client
                 type: string
               directAccessGrantsEnabled:
                 default: true
+                type: boolean
+              displayOnConsentScreen:
+                default: false
                 type: boolean
               enabled:
                 default: true
@@ -90,6 +102,9 @@ spec:
                 type: boolean
               implicitFlowEnabled:
                 type: boolean
+              loginTheme:
+                description: The theme must exist in Keycloak
+                type: string
               name:
                 description: Name is the display name of the client
                 type: string
@@ -164,6 +179,13 @@ spec:
               rule: self.standardFlowEnabled || size(self.webOrigins) == 0
             - message: serviceAccountsEnabled must be false when publicClient is true
               rule: '!self.publicClient || !self.serviceAccountsEnabled'
+            - message: displayOnConsentScreen can only be true when consentRequired
+                is true
+              rule: '!self.displayOnConsentScreen || self.consentRequired'
+            - message: consentScreenText can only be set when displayOnConsentScreen
+                is true
+              rule: '!has(self.consentScreenText) || self.consentScreenText == ''''
+                || self.displayOnConsentScreen'
           status:
             description: ClientStatus defines the observed state of Client
             properties:

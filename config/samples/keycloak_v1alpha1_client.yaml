@@ -47,3 +47,7 @@ spec:
     - name: admin
       description: Full administrative access to all system resources
     - name: editor
+  loginTheme: keycloak.v2
+  consentRequired: true
+  displayOnConsentScreen: true
+  consentScreenText: "Example consent question?"

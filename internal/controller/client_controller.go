@@ -173,6 +173,11 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 		{"implicitFlowEnabled", keycloakClient.ImplicitFlowEnabled, clientObj.Spec.ImplicitFlowEnabled},
 		{"serviceAccountsEnabled", keycloakClient.ServiceAccountsEnabled, clientObj.Spec.ServiceAccountsEnabled},
 		{"oauth2DeviceAuthorizationGrantEnabled", keycloakClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)},
+		// Settings / Login settings
+		{"loginTheme", keycloakClient.Attributes.LoginTheme, clientObj.Spec.LoginTheme},
+		{"consentRequired", keycloakClient.ConsentRequired, clientObj.Spec.ConsentRequired},
+		{"displayOnConsentScreen", keycloakClient.Attributes.DisplayOnConsentScreen, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen)},
+		{"consentScreenText", keycloakClient.Attributes.ConsentScreenText, clientObj.Spec.ConsentScreenText},
 	}
 
 	for _, field := range fields {
@@ -251,6 +256,9 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		newClientAttributes := &keycloak.OpenidClientAttributes{
 			PostLogoutRedirectUris:                clientObj.Spec.PostLogoutRedirectUris,
 			Oauth2DeviceAuthorizationGrantEnabled: keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled),
+			LoginTheme:                            clientObj.Spec.LoginTheme,
+			DisplayOnConsentScreen:                keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen),
+			ConsentScreenText:                     clientObj.Spec.ConsentScreenText,
 		}
 
 		newClient := &keycloak.OpenidClient{
@@ -272,6 +280,7 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			DirectAccessGrantsEnabled: clientObj.Spec.DirectAccessGrantsEnabled,
 			ImplicitFlowEnabled:       clientObj.Spec.ImplicitFlowEnabled,
 			ServiceAccountsEnabled:    clientObj.Spec.ServiceAccountsEnabled,
+			ConsentRequired:           clientObj.Spec.ConsentRequired,
 		}
 
 		// Create the client
@@ -321,9 +330,13 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			updatedClient.DirectAccessGrantsEnabled = clientObj.Spec.DirectAccessGrantsEnabled
 			updatedClient.ImplicitFlowEnabled = clientObj.Spec.ImplicitFlowEnabled
 			updatedClient.ServiceAccountsEnabled = clientObj.Spec.ServiceAccountsEnabled
+			updatedClient.ConsentRequired = clientObj.Spec.ConsentRequired
 
 			updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
 			updatedClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)
+			updatedClient.Attributes.LoginTheme = clientObj.Spec.LoginTheme
+			updatedClient.Attributes.DisplayOnConsentScreen = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen)
+			updatedClient.Attributes.ConsentScreenText = clientObj.Spec.ConsentScreenText
 
 			if err := r.KeycloakClient.UpdateOpenidClient(ctx, &updatedClient); err != nil {
 				log.Error(err, "Failed to update client", "client", clientObj.Spec.ClientID)
@@ -530,7 +543,7 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 
 	// Retry status update with exponential backoff to handle conflicts
 	maxRetries := 3
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		// Fetch the latest version of the client to avoid conflicts
 		var latestClient keycloakv1alpha1.Client
 		if err := r.Get(ctx, client.ObjectKeyFromObject(clientObj), &latestClient); err != nil {

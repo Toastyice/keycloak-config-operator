@@ -81,20 +81,7 @@ type RealmStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Enabled",type=boolean,JSONPath=`.spec.enabled`
-// +kubebuilder:printcolumn:name="Display Name",type=string,JSONPath=`.spec.displayName`
-// +kubebuilder:printcolumn:name="Display Name Html",type=string,JSONPath=`.spec.displayNameHtml`
-// +kubebuilder:printcolumn:name="Ssl Required",type=string,JSONPath=`.spec.sslRequired`
 // +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
-// +kubebuilder:printcolumn:name="UserManagedAccess",type=boolean,JSONPath=`.spec.userManagedAccess`
-// +kubebuilder:printcolumn:name="Organizations Enabled",type=boolean,JSONPath=`.spec.organizationsEnabled`
-// +kubebuilder:printcolumn:name="Registration Allowed",type=boolean,JSONPath=`.spec.registrationAllowed`
-// +kubebuilder:printcolumn:name="ResetPassword Allowed",type=boolean,JSONPath=`.spec.resetPasswordAllowed`
-// +kubebuilder:printcolumn:name="Remember Me",type=boolean,JSONPath=`.spec.rememberMe`
-// +kubebuilder:printcolumn:name="Registration Email As Username",type=boolean,JSONPath=`.spec.registrationEmailAsUsername`
-// +kubebuilder:printcolumn:name="Login With Email Allowed",type=boolean,JSONPath=`.spec.loginWithEmailAllowed`
-// +kubebuilder:printcolumn:name="Duplicate Emails Allowed",type=boolean,JSONPath=`.spec.duplicateEmailsAllowed`
-// +kubebuilder:printcolumn:name="VerifyEmail",type=boolean,JSONPath=`.spec.verifyEmail`
-// +kubebuilder:printcolumn:name="Edit Username Allowed",type=boolean,JSONPath=`.spec.editUsernameAllowed`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Realm is the Schema for the realms API
