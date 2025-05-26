@@ -183,7 +183,6 @@ type ClientStatus struct {
 	RealmReady bool `json:"realmReady,omitempty"`
 
 	// ClientUUID is the internal Keycloak UUID for this client
-	// This is set automatically and should not be modified
 	// +optional
 	ClientUUID string `json:"clientUUID,omitempty"`
 

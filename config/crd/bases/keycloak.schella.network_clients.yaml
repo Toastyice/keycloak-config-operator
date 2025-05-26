@@ -291,9 +291,7 @@ spec:
             description: ClientStatus defines the observed state of Client
             properties:
               clientUUID:
-                description: |-
-                  ClientUUID is the internal Keycloak UUID for this client
-                  This is set automatically and should not be modified
+                description: ClientUUID is the internal Keycloak UUID for this client
                 type: string
               lastSyncTime:
                 description: LastSyncTime is the last time the client was synced
