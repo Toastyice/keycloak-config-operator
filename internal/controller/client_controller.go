@@ -179,9 +179,8 @@ func getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak
 		{"displayOnConsentScreen", keycloakClient.Attributes.DisplayOnConsentScreen, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen)},
 		{"consentScreenText", keycloakClient.Attributes.ConsentScreenText, clientObj.Spec.ConsentScreenText},
 		// Settings / Logout settings
-		{"frontChannelLogoutEnabled", keycloakClient.FrontChannelLogoutEnabled, clientObj.Spec.FrontChannelLogoutEnabled},
-		{"frontChannelLogoutUrl", keycloakClient.Attributes.FrontchannelLogoutUrl, clientObj.Spec.FrontchannelLogoutUrl},
-		//{"frontChannelLogoutSessionRequired", keycloakClient.Attributes.FrontChannelLogoutSessionRequired, clientObj.Spec.FrontChannelLogoutSessionRequired}, //TODO missing in keycloakClient
+		{"frontchannelLogoutEnabled", keycloakClient.FrontChannelLogoutEnabled, clientObj.Spec.FrontchannelLogoutEnabled},
+		{"frontchannelLogoutUrl", keycloakClient.Attributes.FrontchannelLogoutUrl, clientObj.Spec.FrontchannelLogoutUrl},
 		{"backchannelLogoutUrl", keycloakClient.Attributes.BackchannelLogoutUrl, clientObj.Spec.BackchannelLogoutUrl},
 		{"backchannelLogoutSessionRequired", keycloakClient.Attributes.BackchannelLogoutSessionRequired, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutSessionRequired)},
 		{"backchannelLogoutRevokeOfflineTokens", keycloakClient.Attributes.BackchannelLogoutRevokeOfflineTokens, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutRevokeOfflineTokens)},
@@ -292,7 +291,7 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			ImplicitFlowEnabled:       clientObj.Spec.ImplicitFlowEnabled,
 			ServiceAccountsEnabled:    clientObj.Spec.ServiceAccountsEnabled,
 			ConsentRequired:           clientObj.Spec.ConsentRequired,
-			FrontChannelLogoutEnabled: clientObj.Spec.FrontChannelLogoutEnabled,
+			FrontChannelLogoutEnabled: clientObj.Spec.FrontchannelLogoutEnabled,
 		}
 
 		// Create the client
@@ -343,7 +342,7 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 			updatedClient.ImplicitFlowEnabled = clientObj.Spec.ImplicitFlowEnabled
 			updatedClient.ServiceAccountsEnabled = clientObj.Spec.ServiceAccountsEnabled
 			updatedClient.ConsentRequired = clientObj.Spec.ConsentRequired
-			updatedClient.FrontChannelLogoutEnabled = clientObj.Spec.FrontChannelLogoutEnabled
+			updatedClient.FrontChannelLogoutEnabled = clientObj.Spec.FrontchannelLogoutEnabled
 			// Attributes
 			updatedClient.Attributes.PostLogoutRedirectUris = clientObj.Spec.PostLogoutRedirectUris
 			updatedClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled = keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)

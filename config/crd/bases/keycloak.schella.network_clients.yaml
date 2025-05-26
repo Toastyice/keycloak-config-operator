@@ -60,7 +60,8 @@ spec:
                 type: boolean
               backchannelLogoutRevokeOfflineTokens:
                 default: false
-                description: Specifying whether a "revoke_offline_access" event is
+                description: This Option is also valid when FrontChannelLogoutEnabled
+                  is enabled. Specifying whether a "revoke_offline_access" event is
                   included in the Logout Token when the Backchannel Logout URL is
                   used. Keycloak will revoke offline sessions when receiving a Logout
                   Token with this event.
@@ -118,7 +119,7 @@ spec:
                 default: true
                 description: Enabled indicates whether this client is enabled
                 type: boolean
-              frontChannelLogoutEnabled:
+              frontchannelLogoutEnabled:
                 default: false
                 description: When true, logout requires a browser to send the request
                   to the client to configured Front-channel logout URL as specified
@@ -126,7 +127,7 @@ spec:
                   can perform a background invocation for logout as long as either
                   the Backchannel-logout URL is configured or Admin URL is configured.
                 type: boolean
-              frontChannelLogoutUrl:
+              frontchannelLogoutUrl:
                 description: URL that will cause the client to log itself out when
                   a logout request is sent to this realm (via end_session_endpoint).
                   If not provided, it defaults to the base url.
@@ -220,20 +221,17 @@ spec:
                 is true
               rule: '!has(self.consentScreenText) || size(self.consentScreenText)
                 == 0  || self.displayOnConsentScreen'
-            - message: frontChannelLogoutUrl can only be set when frontChannelLogoutEnabled
+            - message: frontChannelLogoutUrl can only be set when frontchannelLogoutEnabled
                 is true
-              rule: '!has(self.frontChannelLogoutUrl) || size(self.frontChannelLogoutUrl)
-                == 0 || self.frontChannelLogoutEnabled'
-            - message: backchannelLogoutUrl can only be set when frontChannelLogoutEnabled
+              rule: '!has(self.frontchannelLogoutUrl) || size(self.frontchannelLogoutUrl)
+                == 0 || self.frontchannelLogoutEnabled'
+            - message: backchannelLogoutUrl can only be set when frontchannelLogoutEnabled
                 is false
               rule: '!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl)
-                == 0 || !self.frontChannelLogoutEnabled'
-            - message: backchannelLogoutSessionRequired must be false when frontChannelLogoutEnabled
+                == 0 || !self.frontchannelLogoutEnabled'
+            - message: backchannelLogoutSessionRequired must be false when frontchannelLogoutEnabled
                 is true
-              rule: '!self.frontChannelLogoutEnabled || !self.backchannelLogoutSessionRequired'
-            - message: backchannelLogoutRevokeOfflineTokens must be false when frontChannelLogoutEnabled
-                is true
-              rule: '!self.frontChannelLogoutEnabled || !self.backchannelLogoutRevokeOfflineTokens'
+              rule: '!self.frontchannelLogoutEnabled || !self.backchannelLogoutSessionRequired'
           status:
             description: ClientStatus defines the observed state of Client
             properties:

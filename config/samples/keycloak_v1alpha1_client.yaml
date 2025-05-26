@@ -51,10 +51,9 @@ spec:
   consentRequired: true
   displayOnConsentScreen: true
   consentScreenText: "Example consent question?"
-  #frontChannelLogoutEnabled: true
-  #frontChannelLogoutUrl: "http://example.fr/cool"
-  #frontChannelLogoutRevokeOfflineTokens: true
-  frontChannelLogoutEnabled: false
+  #frontchannelLogoutEnabled: true
+  #frontchannelLogoutUrl: "http://example.fr/cool"
+  frontchannelLogoutEnabled: false
   backchannelLogoutUrl: "http://example.fr/cool"
   backchannelLogoutSessionRequired: true
   backchannelLogoutRevokeOfflineTokens: true

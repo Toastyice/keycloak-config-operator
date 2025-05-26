@@ -10,10 +10,9 @@ import (
 // +kubebuilder:validation:XValidation:rule="!self.publicClient || !self.serviceAccountsEnabled",message="serviceAccountsEnabled must be false when publicClient is true"
 // +kubebuilder:validation:XValidation:rule="!self.displayOnConsentScreen || self.consentRequired",message="displayOnConsentScreen can only be true when consentRequired is true"
 // +kubebuilder:validation:XValidation:rule=`!has(self.consentScreenText) || size(self.consentScreenText) == 0  || self.displayOnConsentScreen`,message="consentScreenText can only be set when displayOnConsentScreen is true"
-// +kubebuilder:validation:XValidation:rule=`!has(self.frontChannelLogoutUrl) || size(self.frontChannelLogoutUrl) == 0 || self.frontChannelLogoutEnabled`,message="frontChannelLogoutUrl can only be set when frontChannelLogoutEnabled is true"
-// +kubebuilder:validation:XValidation:rule=`!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl) == 0 || !self.frontChannelLogoutEnabled`,message="backchannelLogoutUrl can only be set when frontChannelLogoutEnabled is false"
-// +kubebuilder:validation:XValidation:rule=`!self.frontChannelLogoutEnabled || !self.backchannelLogoutSessionRequired`,message="backchannelLogoutSessionRequired must be false when frontChannelLogoutEnabled is true"
-// +kubebuilder:validation:XValidation:rule=`!self.frontChannelLogoutEnabled || !self.backchannelLogoutRevokeOfflineTokens`,message="backchannelLogoutRevokeOfflineTokens must be false when frontChannelLogoutEnabled is true"
+// +kubebuilder:validation:XValidation:rule=`!has(self.frontchannelLogoutUrl) || size(self.frontchannelLogoutUrl) == 0 || self.frontchannelLogoutEnabled`,message="frontChannelLogoutUrl can only be set when frontchannelLogoutEnabled is true"
+// +kubebuilder:validation:XValidation:rule=`!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl) == 0 || !self.frontchannelLogoutEnabled`,message="backchannelLogoutUrl can only be set when frontchannelLogoutEnabled is false"
+// +kubebuilder:validation:XValidation:rule=`!self.frontchannelLogoutEnabled || !self.backchannelLogoutSessionRequired`,message="backchannelLogoutSessionRequired must be false when frontchannelLogoutEnabled is true"
 type ClientSpec struct {
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
@@ -114,12 +113,12 @@ type ClientSpec struct {
 	// When true, logout requires a browser to send the request to the client to configured Front-channel logout URL as specified in the OIDC Front-channel logout specification. When false, server can perform a background invocation for logout as long as either the Backchannel-logout URL is configured or Admin URL is configured.
 	// +optional
 	// +kubebuilder:default=false
-	FrontChannelLogoutEnabled bool `json:"frontChannelLogoutEnabled"`
+	FrontchannelLogoutEnabled bool `json:"frontchannelLogoutEnabled"`
 
 	// URL that will cause the client to log itself out when a logout request is sent to this realm (via end_session_endpoint). If not provided, it defaults to the base url.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$')`,message="frontchannelLogoutUrl must be a valid HTTP or HTTPS URL"
-	FrontchannelLogoutUrl string `json:"frontChannelLogoutUrl"`
+	FrontchannelLogoutUrl string `json:"frontchannelLogoutUrl"`
 
 	// URL that will cause the client to log itself out when a logout request is sent to this realm (via end_session_endpoint). The logout is done by sending logout token as specified in the OIDC Backchannel logout specification. If omitted, the logout request might be sent to the specified 'Admin URL' (if configured) in the format specific to Keycloak/RH-SSO adapters. If even 'Admin URL' is not configured, no logout request will be sent to the client.
 	// +optional
@@ -131,7 +130,7 @@ type ClientSpec struct {
 	// +kubebuilder:default=false
 	BackchannelLogoutSessionRequired bool `json:"backchannelLogoutSessionRequired"`
 
-	// Specifying whether a "revoke_offline_access" event is included in the Logout Token when the Backchannel Logout URL is used. Keycloak will revoke offline sessions when receiving a Logout Token with this event.
+	// This Option is also valid when FrontchannelLogoutEnabled is enabled. Specifying whether a "revoke_offline_access" event is included in the Logout Token when the Backchannel Logout URL is used. Keycloak will revoke offline sessions when receiving a Logout Token with this event.
 	// +optional
 	// +kubebuilder:default=false
 	BackchannelLogoutRevokeOfflineTokens bool `json:"backchannelLogoutRevokeOfflineTokens"`
