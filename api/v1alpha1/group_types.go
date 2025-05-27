@@ -13,14 +13,7 @@ type GroupSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="name is immutable"
 	Name string `json:"name"`
-
-	// Path is the full path of the group in the group hierarchy
-	// This is automatically computed based on parent groups
-	// +optional
-	// +kubebuilder:validation:MaxLength=500
-	Path string `json:"path,omitempty"`
 
 	// ParentGroupRef specifies the parent group if this is a subgroup
 	// +optional
@@ -29,30 +22,17 @@ type GroupSpec struct {
 	// RealmRoles is a list of realm-level roles assigned to this group
 	// +optional
 	// +kubebuilder:default={}
-	// +kubebuilder:validation:MaxItems=100
 	RealmRoles []string `json:"realmRoles"`
 
 	// ClientRoles maps client names to lists of roles assigned to this group for those clients
 	// +optional
 	// +kubebuilder:default={}
-	// +kubebuilder:validation:MaxProperties=50
 	ClientRoles map[string][]string `json:"clientRoles"`
 
 	// Attributes are custom attributes for the group
 	// +optional
 	// +kubebuilder:default={}
-	// +kubebuilder:validation:MaxProperties=100
 	Attributes map[string][]string `json:"attributes"`
-
-	// Description provides a description of the group
-	// +optional
-	// +kubebuilder:validation:MaxLength=1000
-	Description string `json:"description,omitempty"`
-
-	// Enabled determines if the group is active
-	// +optional
-	// +kubebuilder:default=true
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // GroupReference defines a reference to a Group resource
@@ -83,6 +63,9 @@ type GroupStatus struct {
 	// RealmReady indicates if the referenced realm is ready
 	RealmReady bool `json:"realmReady,omitempty"`
 
+	// Only relevant if ParentGroupRef is set
+	ParentGroupUUID string `json:"parentGroupUUID,omitempty"`
+
 	// ParentGroupReady indicates if the referenced parent group is ready
 	// Only relevant if ParentGroupRef is set
 	ParentGroupReady *bool `json:"parentGroupReady,omitempty"`
@@ -90,18 +73,6 @@ type GroupStatus struct {
 	// GroupUUID is the internal Keycloak UUID for this group
 	// +optional
 	GroupUUID string `json:"groupUUID,omitempty"`
-
-	// ComputedPath is the actual path of the group as computed by the controller
-	// +optional
-	ComputedPath string `json:"computedPath,omitempty"`
-
-	// SubGroupCount is the number of direct subgroups
-	// +optional
-	SubGroupCount int32 `json:"subGroupCount,omitempty"`
-
-	// MemberCount is the number of users that are members of this group
-	// +optional
-	MemberCount int32 `json:"memberCount,omitempty"`
 
 	// RealmRoleStatuses tracks the status of realm role assignments
 	// +optional

@@ -67,7 +67,6 @@ spec:
                   type: array
                 default: {}
                 description: Attributes are custom attributes for the group
-                maxProperties: 100
                 type: object
               clientRoles:
                 additionalProperties:
@@ -77,24 +76,12 @@ spec:
                 default: {}
                 description: ClientRoles maps client names to lists of roles assigned
                   to this group for those clients
-                maxProperties: 50
                 type: object
-              description:
-                description: Description provides a description of the group
-                maxLength: 1000
-                type: string
-              enabled:
-                default: true
-                description: Enabled determines if the group is active
-                type: boolean
               name:
                 description: Name is the name of the group
                 maxLength: 255
                 minLength: 1
                 type: string
-                x-kubernetes-validations:
-                - message: name is immutable
-                  rule: self == oldSelf
               parentGroupRef:
                 description: ParentGroupRef specifies the parent group if this is
                   a subgroup
@@ -112,12 +99,6 @@ spec:
                 required:
                 - name
                 type: object
-              path:
-                description: |-
-                  Path is the full path of the group in the group hierarchy
-                  This is automatically computed based on parent groups
-                maxLength: 500
-                type: string
               realmRef:
                 description: RealmRef specifies which realm this group belongs to
                 properties:
@@ -138,7 +119,6 @@ spec:
                   this group
                 items:
                   type: string
-                maxItems: 100
                 type: array
             required:
             - name
@@ -170,10 +150,6 @@ spec:
                   type: object
                 description: ClientRoleStatuses tracks the status of client role assignments
                 type: object
-              computedPath:
-                description: ComputedPath is the actual path of the group as computed
-                  by the controller
-                type: string
               groupUUID:
                 description: GroupUUID is the internal Keycloak UUID for this group
                 type: string
@@ -181,11 +157,6 @@ spec:
                 description: LastSyncTime is the last time the group was synced
                 format: date-time
                 type: string
-              memberCount:
-                description: MemberCount is the number of users that are members of
-                  this group
-                format: int32
-                type: integer
               message:
                 description: Message provides additional information about the current
                   state
@@ -195,6 +166,9 @@ spec:
                   ParentGroupReady indicates if the referenced parent group is ready
                   Only relevant if ParentGroupRef is set
                 type: boolean
+              parentGroupUUID:
+                description: Only relevant if ParentGroupRef is set
+                type: string
               ready:
                 description: Ready indicates if the group is ready
                 type: boolean
@@ -222,10 +196,6 @@ spec:
                   type: object
                 description: RealmRoleStatuses tracks the status of realm role assignments
                 type: object
-              subGroupCount:
-                description: SubGroupCount is the number of direct subgroups
-                format: int32
-                type: integer
             type: object
         type: object
     served: true

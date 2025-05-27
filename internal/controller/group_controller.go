@@ -1,3 +1,7 @@
+//TODO
+//Doesn't fix parent if manually moved in Keycloak ui
+//recreates the group if renamed externally -> fix by try lookup with UUID first
+
 package controller
 
 import (
@@ -44,8 +48,8 @@ type GroupReconcileResult struct {
 // GroupFieldDiff represents a field difference for change detection
 type GroupFieldDiff struct {
 	Name string
-	Old  interface{}
-	New  interface{}
+	Old  any
+	New  any
 }
 
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=groups,verbs=get;list;watch;create;update;patch;delete
@@ -227,14 +231,15 @@ func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloak
 	logger := log.FromContext(ctx)
 
 	// Handle parent group resolution first if needed
-	//if err := r.resolveParentGroup(ctx, groupObj, realm); err != nil {
-	//	result := GroupReconcileResult{
-	//		Ready:      false,
-	//		RealmReady: true,
-	//		Message:    fmt.Sprintf("Failed to resolve parent group: %v", err),
-	//	}
-	//	return r.updateStatus(ctx, groupObj, result)
-	//}
+	if err := r.resolveParentGroup(ctx, groupObj, realm); err != nil {
+		logger.Error(err, "Failed to resolve parent group")
+		result := GroupReconcileResult{
+			Ready:      false,
+			RealmReady: true,
+			Message:    fmt.Sprintf("Failed to resolve parent group: %v", err),
+		}
+		return r.updateStatus(ctx, groupObj, result)
+	}
 
 	keycloakGroup, err := r.getOrCreateGroup(ctx, groupObj, realm)
 	if err != nil {
@@ -271,30 +276,142 @@ func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloak
 }
 
 // resolveParentGroup resolves the parent group ID if a parent is specified
-//func (r *GroupReconciler) resolveParentGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
-//	if groupObj.Spec.ParentGroupRef.Name == "" {
-//		groupObj.Status.ParentGroupUUID = "" //TODO implement
-//		return nil
-//	}
-//
-//	// Check if we already have the parent UUID and it's still valid
-//	if groupObj.Status.ParentGroupUUID != "" {
-//		if _, err := r.KeycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.ParentGroupUUID); err == nil {
-//			return nil // Parent still exists
-//		}
-//		// Parent not found, need to resolve again
-//		groupObj.Status.ParentGroupUUID = ""
-//	}
-//
-//	// Find parent group by name
-//	parentGroup, err := r.KeycloakClient.GetGroupByName(ctx, realm.Name, groupObj.Spec.ParentGroup)
-//	if err != nil {
-//		return fmt.Errorf("failed to find parent group '%s': %w", groupObj.Spec.ParentGroup, err)
-//	}
-//
-//	groupObj.Status.ParentGroupUUID = parentGroup.Id
-//	return nil
-//}
+func (r *GroupReconciler) resolveParentGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
+	logger := log.FromContext(ctx)
+
+	if groupObj.Spec.ParentGroupRef == nil || groupObj.Spec.ParentGroupRef.Name == "" {
+		// No parent group specified, clear any existing parent UUID
+		if groupObj.Status.ParentGroupUUID != "" {
+			logger.V(1).Info("Clearing parent group UUID - no parent specified")
+			groupObj.Status.ParentGroupUUID = ""
+		}
+		return nil
+	}
+
+	// Check if we already have the parent UUID and it's still valid
+	if groupObj.Status.ParentGroupUUID != "" {
+		if _, err := r.KeycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.ParentGroupUUID); err == nil {
+			logger.V(1).Info("Parent group UUID still valid", "parentUUID", groupObj.Status.ParentGroupUUID)
+			return nil // Parent still exists
+		}
+		// Parent not found, need to resolve again
+		logger.Info("Parent group UUID no longer valid, resolving again", "oldParentUUID", groupObj.Status.ParentGroupUUID)
+		groupObj.Status.ParentGroupUUID = ""
+	}
+
+	// Get the parent group namespace (default to same namespace if not specified)
+	parentNamespace := groupObj.Spec.ParentGroupRef.Namespace
+	if parentNamespace == "" {
+		parentNamespace = groupObj.Namespace
+	}
+
+	// Fetch the parent Group resource
+	var parentGroupObj keycloakv1alpha1.Group
+	parentKey := types.NamespacedName{
+		Name:      groupObj.Spec.ParentGroupRef.Name,
+		Namespace: parentNamespace,
+	}
+
+	if err := r.Get(ctx, parentKey, &parentGroupObj); err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("parent group '%s' not found in namespace '%s'", groupObj.Spec.ParentGroupRef.Name, parentNamespace)
+		}
+		return fmt.Errorf("failed to fetch parent group '%s': %w", groupObj.Spec.ParentGroupRef.Name, err)
+	}
+
+	// Validate parent group hierarchy to prevent circular references
+	if err := r.validateParentGroupHierarchy(ctx, groupObj, &parentGroupObj); err != nil {
+		return fmt.Errorf("invalid parent group hierarchy: %w", err)
+	}
+
+	// Check if parent group is ready
+	if !parentGroupObj.Status.Ready {
+		return fmt.Errorf("parent group '%s' is not ready", groupObj.Spec.ParentGroupRef.Name)
+	}
+
+	// Check if parent group belongs to the same realm
+	if parentGroupObj.Spec.RealmRef.Name != groupObj.Spec.RealmRef.Name {
+		return fmt.Errorf("parent group '%s' belongs to different realm '%s', expected '%s'",
+			groupObj.Spec.ParentGroupRef.Name, parentGroupObj.Spec.RealmRef.Name, groupObj.Spec.RealmRef.Name)
+	}
+
+	// Check if parent group has a valid UUID
+	if parentGroupObj.Status.GroupUUID == "" {
+		return fmt.Errorf("parent group '%s' does not have a valid GroupUUID", groupObj.Spec.ParentGroupRef.Name)
+	}
+
+	// Verify the parent group exists in Keycloak
+	_, err := r.KeycloakClient.GetGroup(ctx, realm.Name, parentGroupObj.Status.GroupUUID)
+	if err != nil {
+		if keycloak.ErrorIs404(err) {
+			return fmt.Errorf("parent group '%s' not found in Keycloak (UUID: %s)",
+				groupObj.Spec.ParentGroupRef.Name, parentGroupObj.Status.GroupUUID)
+		}
+		return fmt.Errorf("failed to verify parent group in Keycloak: %w", err)
+	}
+
+	// Set the parent group UUID
+	groupObj.Status.ParentGroupUUID = parentGroupObj.Status.GroupUUID
+	logger.Info("Parent group resolved successfully",
+		"parentName", groupObj.Spec.ParentGroupRef.Name,
+		"parentUUID", groupObj.Status.ParentGroupUUID)
+
+	return nil
+}
+
+// validateParentGroupHierarchy validates parent group hierarchy to prevent circular dependencies
+func (r *GroupReconciler) validateParentGroupHierarchy(ctx context.Context, groupObj *keycloakv1alpha1.Group, parentGroupObj *keycloakv1alpha1.Group) error {
+	// Prevent self-reference
+	if groupObj.Name == parentGroupObj.Name && groupObj.Namespace == parentGroupObj.Namespace {
+		return fmt.Errorf("group cannot be its own parent")
+	}
+
+	// Check for circular reference by walking up the parent chain
+	visited := make(map[string]bool)
+	current := parentGroupObj
+
+	for current.Spec.ParentGroupRef != nil && current.Spec.ParentGroupRef.Name != "" {
+		key := fmt.Sprintf("%s/%s", current.Namespace, current.Spec.ParentGroupRef.Name)
+		if visited[key] {
+			return fmt.Errorf("circular parent group reference detected")
+		}
+		visited[key] = true
+
+		// Check if this would create a circular reference with our group
+		if current.Spec.ParentGroupRef.Name == groupObj.Name {
+			parentNS := current.Spec.ParentGroupRef.Namespace
+			if parentNS == "" {
+				parentNS = current.Namespace
+			}
+			if parentNS == groupObj.Namespace {
+				return fmt.Errorf("circular parent group reference: %s would reference %s", groupObj.Name, current.Name)
+			}
+		}
+
+		// Get the next parent
+		var nextParent keycloakv1alpha1.Group
+		nextParentNS := current.Spec.ParentGroupRef.Namespace
+		if nextParentNS == "" {
+			nextParentNS = current.Namespace
+		}
+
+		nextKey := types.NamespacedName{
+			Name:      current.Spec.ParentGroupRef.Name,
+			Namespace: nextParentNS,
+		}
+
+		if err := r.Get(ctx, nextKey, &nextParent); err != nil {
+			if errors.IsNotFound(err) {
+				break // Parent chain ends here
+			}
+			return fmt.Errorf("failed to validate parent hierarchy: %w", err)
+		}
+
+		current = &nextParent
+	}
+
+	return nil
+}
 
 // getOrCreateGroup retrieves an existing group or creates a new one
 func (r *GroupReconciler) getOrCreateGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (*keycloak.Group, error) {
@@ -332,7 +449,7 @@ func (r *GroupReconciler) fetchExistingGroup(ctx context.Context, groupObj *keyc
 // clearGroupState clears stored group state when group is not found
 func (r *GroupReconciler) clearGroupState(groupObj *keycloakv1alpha1.Group) {
 	groupObj.Status.GroupUUID = ""
-	//groupObj.Status.ParentGroupUUID = ""
+	groupObj.Status.ParentGroupUUID = ""
 }
 
 // createNewGroup creates a new group in Keycloak
@@ -355,8 +472,8 @@ func (r *GroupReconciler) createNewGroup(ctx context.Context, groupObj *keycloak
 // buildGroupFromSpec creates a new Group from the spec
 func (r *GroupReconciler) buildGroupFromSpec(groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) *keycloak.Group {
 	return &keycloak.Group{
-		RealmId: realm.Name,
-		//ParentId:    groupObj.Status.ParentGroupUUID,
+		RealmId:     realm.Name,
+		ParentId:    groupObj.Status.ParentGroupUUID,
 		Name:        groupObj.Spec.Name,
 		Attributes:  groupObj.Spec.Attributes,
 		RealmRoles:  groupObj.Spec.RealmRoles,
@@ -403,7 +520,7 @@ func (r *GroupReconciler) applyChangesToGroup(groupObj *keycloakv1alpha1.Group, 
 	// Apply basic fields
 	updatedGroup.Name = groupObj.Spec.Name
 	updatedGroup.RealmId = realm.Name
-	//updatedGroup.ParentId = groupObj.Status.ParentGroupUUID
+	updatedGroup.ParentId = groupObj.Status.ParentGroupUUID
 	updatedGroup.Attributes = groupObj.Spec.Attributes
 	updatedGroup.RealmRoles = groupObj.Spec.RealmRoles
 	updatedGroup.ClientRoles = groupObj.Spec.ClientRoles
@@ -417,7 +534,7 @@ func (r *GroupReconciler) getGroupDiffs(groupObj *keycloakv1alpha1.Group, keyclo
 
 	fields := []GroupFieldDiff{
 		{"name", keycloakGroup.Name, groupObj.Spec.Name},
-		//{"parentId", keycloakGroup.ParentId, groupObj.Status.ParentGroupUUID},
+		{"parentId", keycloakGroup.ParentId, groupObj.Status.ParentGroupUUID},
 	}
 
 	for _, field := range fields {
@@ -564,8 +681,8 @@ func (r *GroupReconciler) performStatusUpdate(ctx context.Context, groupObj *key
 	logger.V(1).Info("Status updated successfully",
 		"ready", latestGroup.Status.Ready,
 		"message", latestGroup.Status.Message,
-		"groupUUID", latestGroup.Status.GroupUUID)
-	//"parentGroupUUID", latestGroup.Status.ParentGroupUUID)
+		"groupUUID", latestGroup.Status.GroupUUID,
+		"parentGroupUUID", latestGroup.Status.ParentGroupUUID)
 
 	return nil
 }
@@ -582,9 +699,8 @@ func (r *GroupReconciler) applyStatusUpdate(latestGroup, originalGroup *keycloak
 		latestGroup.Status.GroupUUID = originalGroup.Status.GroupUUID
 	}
 
-	//if originalGroup.Status.ParentGroupUUID != "" {
-	//	latestGroup.Status.ParentGroupUUID = originalGroup.Status.ParentGroupUUID
-	//}
+	// Preserve parent group UUID
+	latestGroup.Status.ParentGroupUUID = originalGroup.Status.ParentGroupUUID
 }
 
 // SetupWithManager sets up the controller with the Manager
