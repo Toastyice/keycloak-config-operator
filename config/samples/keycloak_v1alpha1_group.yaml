@@ -1,0 +1,66 @@
+apiVersion: keycloak.schella.network/v1alpha1
+kind: Group
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: group-minimal-example
+spec:
+  # Required: Reference to the realm this group belongs to
+  realmRef:
+    name: realm-sample
+  # Required: Name of the group
+  name: "basic-users"
+---
+#apiVersion: keycloak.schella.network/v1alpha1
+#kind: Group
+#metadata:
+#  labels:
+#    app.kubernetes.io/name: keycloak-config-operator
+#    app.kubernetes.io/managed-by: kustomize
+#  name: group-complete-example
+#spec:
+#  # Required: Reference to the realm this group belongs to
+#  realmRef:
+#    name: realm-sample
+#    namespace: default
+#  # Required: Name of the group (immutable after creation)
+#  name: "developers"
+#  # Optional: Description of the group
+#  description: "Development team with access to development resources and applications"
+#  # Optional: Full path in group hierarchy (usually auto-computed by controller)
+#  path: "/engineering/developers"
+#  # Optional: Reference to parent group for creating group hierarchy
+#  parentGroupRef:
+#    name: engineering-parent-group
+#    namespace: default
+#  # Optional: List of realm-level roles assigned to this group
+#  realmRoles:
+#    - "user"
+#    - "developer"
+#    - "offline_access"
+#  # Optional: Map of client names to their role lists
+#  clientRoles:
+#    my-web-app:
+#      - "app-user"
+#      - "read-access"
+#    api-service:
+#      - "api-consumer"
+#      - "metrics-reader"
+#    admin-console:
+#      - "dashboard-viewer"
+#  # Optional: Custom attributes for the group
+#  attributes:
+#    department:
+#      - "engineering"
+#    cost-center:
+#      - "dev-ops-001"
+#    environment:
+#      - "development"
+#      - "staging"
+#    team-lead:
+#      - "john.doe@company.com"
+#    budget-code:
+#      - "PROJ-2024-DEV"
+#  # Optional: Whether the group is enabled/active (defaults to true)
+#  enabled: true

@@ -1,0 +1,234 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: groups.keycloak.schella.network
+spec:
+  group: keycloak.schella.network
+  names:
+    kind: Group
+    listKind: GroupList
+    plural: groups
+    singular: group
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.name
+      name: Name
+      type: string
+    - jsonPath: .spec.realmRef.name
+      name: Realm
+      type: string
+    - jsonPath: .status.computedPath
+      name: Path
+      type: string
+    - jsonPath: .spec.enabled
+      name: Enabled
+      type: boolean
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.memberCount
+      name: Members
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Group is the Schema for the groups API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              attributes:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                default: {}
+                description: Attributes are custom attributes for the group
+                maxProperties: 100
+                type: object
+              clientRoles:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                default: {}
+                description: ClientRoles maps client names to lists of roles assigned
+                  to this group for those clients
+                maxProperties: 50
+                type: object
+              description:
+                description: Description provides a description of the group
+                maxLength: 1000
+                type: string
+              enabled:
+                default: true
+                description: Enabled determines if the group is active
+                type: boolean
+              name:
+                description: Name is the name of the group
+                maxLength: 255
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: name is immutable
+                  rule: self == oldSelf
+              parentGroupRef:
+                description: ParentGroupRef specifies the parent group if this is
+                  a subgroup
+                properties:
+                  name:
+                    description: Name is the name of the Group resource
+                    maxLength: 255
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace is the namespace of the Group resource
+                      If empty, the same namespace as the referencing Group will be used
+                    maxLength: 253
+                    type: string
+                required:
+                - name
+                type: object
+              path:
+                description: |-
+                  Path is the full path of the group in the group hierarchy
+                  This is automatically computed based on parent groups
+                maxLength: 500
+                type: string
+              realmRef:
+                description: RealmRef specifies which realm this group belongs to
+                properties:
+                  name:
+                    description: Name is the name of the Realm resource
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace is the namespace of the Realm resource
+                      If empty, the same namespace as the Client will be used
+                    type: string
+                required:
+                - name
+                type: object
+              realmRoles:
+                default: []
+                description: RealmRoles is a list of realm-level roles assigned to
+                  this group
+                items:
+                  type: string
+                maxItems: 100
+                type: array
+            required:
+            - name
+            - realmRef
+            type: object
+          status:
+            description: GroupStatus defines the observed state of Group
+            properties:
+              clientRoleStatuses:
+                additionalProperties:
+                  additionalProperties:
+                    description: RoleAssignmentStatus represents the status of a role
+                      assignment
+                    properties:
+                      assigned:
+                        description: Assigned indicates if the role is successfully
+                          assigned
+                        type: boolean
+                      message:
+                        description: Message provides additional information about
+                          the assignment status
+                        type: string
+                      roleUUID:
+                        description: RoleUUID is the Keycloak UUID of the role
+                        type: string
+                    required:
+                    - assigned
+                    type: object
+                  type: object
+                description: ClientRoleStatuses tracks the status of client role assignments
+                type: object
+              computedPath:
+                description: ComputedPath is the actual path of the group as computed
+                  by the controller
+                type: string
+              groupUUID:
+                description: GroupUUID is the internal Keycloak UUID for this group
+                type: string
+              lastSyncTime:
+                description: LastSyncTime is the last time the group was synced
+                format: date-time
+                type: string
+              memberCount:
+                description: MemberCount is the number of users that are members of
+                  this group
+                format: int32
+                type: integer
+              message:
+                description: Message provides additional information about the current
+                  state
+                type: string
+              parentGroupReady:
+                description: |-
+                  ParentGroupReady indicates if the referenced parent group is ready
+                  Only relevant if ParentGroupRef is set
+                type: boolean
+              ready:
+                description: Ready indicates if the group is ready
+                type: boolean
+              realmReady:
+                description: RealmReady indicates if the referenced realm is ready
+                type: boolean
+              realmRoleStatuses:
+                additionalProperties:
+                  description: RoleAssignmentStatus represents the status of a role
+                    assignment
+                  properties:
+                    assigned:
+                      description: Assigned indicates if the role is successfully
+                        assigned
+                      type: boolean
+                    message:
+                      description: Message provides additional information about the
+                        assignment status
+                      type: string
+                    roleUUID:
+                      description: RoleUUID is the Keycloak UUID of the role
+                      type: string
+                  required:
+                  - assigned
+                  type: object
+                description: RealmRoleStatuses tracks the status of realm role assignments
+                type: object
+              subGroupCount:
+                description: SubGroupCount is the number of direct subgroups
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
