@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
-	"github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
 
 const realmFinalizer = "realm.keycloak.schella.network/finalizer"
