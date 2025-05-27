@@ -141,6 +141,12 @@ spec:
                 description: Disabled clients cannot initiate a login or have obtained
                   access tokens.
                 type: boolean
+              extraConfig:
+                description: |-
+                  ExtraConfig allows specifying additional client configuration that is not covered by the standard fields.
+                  This accepts arbitrary JSON that will be passed directly to Keycloak.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               frontchannelLogoutEnabled:
                 default: false
                 description: When true, logout requires a browser to send the request

@@ -2,8 +2,10 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -468,6 +470,14 @@ func (r *ClientReconciler) getClientDiffs(clientObj *keycloakv1alpha1.Client, ke
 		diffs = append(diffs, fmt.Sprintf("postLogoutRedirectUris: %v -> %v", keycloakClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris))
 	}
 
+	// Handle ExtraConfig with runtime.RawExtension
+	if equal, diff, err := r.compareExtraConfig(keycloakClient, clientObj); err != nil {
+		// Handle error - you might want to log this or add it as a diff
+		diffs = append(diffs, fmt.Sprintf("extraConfig: error comparing - %v", err))
+	} else if !equal {
+		diffs = append(diffs, diff)
+	}
+
 	return diffs
 }
 
@@ -485,6 +495,120 @@ func (r *ClientReconciler) slicesEqual(a, b []string) bool {
 		return true
 	}
 	return reflect.DeepEqual(a, b)
+}
+
+// getExtraConfigMap extracts map[string]interface{} from runtime.RawExtension
+func (r *ClientReconciler) getExtraConfigMap(rawExt *runtime.RawExtension) (map[string]interface{}, error) {
+	if rawExt == nil || rawExt.Raw == nil || len(rawExt.Raw) == 0 {
+		return make(map[string]interface{}), nil
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(rawExt.Raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal extra config: %w", err)
+	}
+
+	if result == nil {
+		result = make(map[string]interface{})
+	}
+
+	return result, nil
+}
+
+// compareExtraConfig compares ExtraConfig using the keycloak package's normalization logic
+// This leverages the existing unmarshal/marshal functions which already separate
+// structured fields from truly "extra" configuration
+func (r *ClientReconciler) compareExtraConfig(keycloakClient *keycloak.OpenidClient, clientObj *keycloakv1alpha1.Client) (bool, string, error) {
+	// Get the current ExtraConfig from Keycloak
+	// This should already be normalized by the UnmarshalJSON function
+	// which removes structured fields and only keeps truly "extra" config
+	currentExtraConfig := keycloakClient.Attributes.ExtraConfig
+
+	// Get the desired ExtraConfig from the client spec
+	desiredExtraConfig, err := r.getExtraConfigMap(clientObj.Spec.ExtraConfig)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to parse desired extra config: %w", err)
+	}
+
+	// The keycloak package's unmarshal function should have already filtered out
+	// structured fields, so currentExtraConfig should only contain truly extra config
+
+	// Handle nil maps by treating them as empty
+	if currentExtraConfig == nil {
+		currentExtraConfig = make(map[string]interface{})
+	}
+	if desiredExtraConfig == nil {
+		desiredExtraConfig = make(map[string]interface{})
+	}
+
+	// If both are empty, they're equal
+	if len(currentExtraConfig) == 0 && len(desiredExtraConfig) == 0 {
+		return true, "", nil
+	}
+
+	// Use reflect.DeepEqual for comparison
+	if reflect.DeepEqual(currentExtraConfig, desiredExtraConfig) {
+		return true, "", nil
+	}
+
+	// Create diff string
+	diff := r.formatExtraConfigDiff(currentExtraConfig, desiredExtraConfig)
+	return false, diff, nil
+}
+
+// formatExtraConfigDiff creates a readable string representation of ExtraConfig differences
+func (r *ClientReconciler) formatExtraConfigDiff(current, desired map[string]interface{}) string {
+	var changes []string
+
+	// Get all unique keys
+	allKeys := make(map[string]bool)
+	for k := range current {
+		allKeys[k] = true
+	}
+	for k := range desired {
+		allKeys[k] = true
+	}
+
+	// Convert to sorted slice for consistent output
+	keys := make([]string, 0, len(allKeys))
+	for k := range allKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		currentVal, currentExists := current[key]
+		desiredVal, desiredExists := desired[key]
+
+		if !currentExists {
+			changes = append(changes, fmt.Sprintf("  +%s: %v", key, desiredVal))
+		} else if !desiredExists {
+			changes = append(changes, fmt.Sprintf("  -%s: %v", key, currentVal))
+		} else if !reflect.DeepEqual(currentVal, desiredVal) {
+			changes = append(changes, fmt.Sprintf("  ~%s: %v -> %v", key, currentVal, desiredVal))
+		}
+	}
+
+	if len(changes) == 0 {
+		return "extraConfig: no changes"
+	}
+
+	return fmt.Sprintf("extraConfig:\n%s", strings.Join(changes, "\n"))
+}
+
+// Helper function to convert map[string]interface{} back to runtime.RawExtension
+// Useful if you need to update the client spec with normalized values
+func (r *ClientReconciler) mapToRawExtension(data map[string]interface{}) (*runtime.RawExtension, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal extra config: %w", err)
+	}
+
+	return &runtime.RawExtension{Raw: raw}, nil
 }
 
 // getClientRolesForSingleClient retrieves roles for a specific client

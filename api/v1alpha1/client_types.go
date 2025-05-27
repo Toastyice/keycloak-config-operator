@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // +kubebuilder:validation:XValidation:rule="self.standardFlowEnabled || size(self.redirectUris) == 0",message="redirectUris can only be set when standardFlowEnabled is true"
@@ -146,6 +147,12 @@ type ClientSpec struct {
 	// +optional
 	// +kubebuilder:default=false
 	BackchannelLogoutRevokeOfflineTokens bool `json:"backchannelLogoutRevokeOfflineTokens"`
+
+	// ExtraConfig allows specifying additional client configuration that is not covered by the standard fields.
+	// This accepts arbitrary JSON that will be passed directly to Keycloak.
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ExtraConfig *runtime.RawExtension `json:"extraConfig,omitempty"`
 }
 
 // RealmReference defines a reference to a Realm resource
