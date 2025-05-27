@@ -651,9 +651,9 @@ func (r *ClientReconciler) createRole(ctx context.Context, roleName string, role
 // getSuccessMessage returns an appropriate success message
 func (r *ClientReconciler) getSuccessMessage(clientChanged bool) string {
 	if clientChanged {
-		return "Client and roles synchronized successfully"
+		return "Client and roles reconciled successfully"
 	}
-	return "Client and roles synchronized"
+	return "Client and roles reconciled"
 }
 
 // reconcileDelete handles client deletion
