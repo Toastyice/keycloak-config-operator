@@ -40,7 +40,7 @@ import (
 
 	"context"
 
-	"github.com/toastyice/keycloak-config-operator/internal/keycloak"
+	"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	// +kubebuilder:scaffold:imports
 )
 
