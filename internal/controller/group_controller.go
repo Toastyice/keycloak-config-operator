@@ -1,7 +1,5 @@
 //TODO
 //Doesn't fix parent if manually moved in Keycloak ui
-//recreates the group if renamed externally -> fix by try lookup with UUID first
-
 package controller
 
 import (
