@@ -15,8 +15,11 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.conditions[?(@.type=="Connected")].status
+    - jsonPath: .status.conditions[?(@.type=='Connected')].status
       name: Connected
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
       type: string
     - jsonPath: .status.serverVersion
       name: Version

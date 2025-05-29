@@ -2,7 +2,10 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -10,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
@@ -19,14 +22,17 @@ import (
 )
 
 const (
-	// Condition types
-	TypeConnected = "Connected"
-	TypeReady     = "Ready"
+	TypeConnected = "Connected" // Can we reach the Keycloak URL?
+	TypeReady     = "Ready"     // Can we authenticate and use the API?
 
-	// Condition reasons
-	ReasonConnectionSuccessful = "ConnectionSuccessful"
-	ReasonConnectionFailed     = "ConnectionFailed"
-	ReasonConfigurationInvalid = "ConfigurationInvalid"
+	// Connected condition reasons
+	ReasonURLReachable   = "URLReachable"
+	ReasonURLUnreachable = "URLUnreachable"
+
+	// Ready condition reasons
+	ReasonAuthenticationSuccessful = "AuthenticationSuccessful"
+	ReasonAuthenticationFailed     = "AuthenticationFailed"
+	ReasonAPIError                 = "APIError"
 )
 
 // KeycloakInstanceConfigReconciler reconciles a KeycloakInstanceConfig object
@@ -40,7 +46,6 @@ type KeycloakInstanceConfigReconciler struct {
 // +kubebuilder:rbac:groups=keycloak.schella.network,resources=keycloakinstanceconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=keycloak.schella.network,resources=keycloakinstanceconfigs/finalizers,verbs=update
 
-// internal/controller/keycloakinstanceconfig_controller.go
 func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -64,98 +69,136 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	if r.ClientManager == nil {
-		return r.updateConnectionStatus(ctx, &config, false, "ClientManager not initialized", nil)
+		return r.updateStatus(ctx, &config, false, false, "ClientManager not initialized", "ClientManager not initialized", nil)
 	}
 
-	// Test the connection and get server info
-	serverInfo, err := r.testConnection(ctx, &config)
+	// Phase 1: Check if URL is reachable
+	urlReachable, connectMessage := r.checkURLReachability(ctx, &config)
+
+	if !urlReachable {
+		// If not connected, Ready is implicitly false
+		return r.updateStatus(ctx, &config, false, false, connectMessage, "Cannot reach Keycloak URL", nil)
+	}
+
+	// Phase 2: Check authentication and API access
+	client, err := r.ClientManager.GetOrCreateClient(ctx, &config)
 	if err != nil {
-		log.Error(err, "Failed to connect to Keycloak")
-		return r.updateConnectionStatus(ctx, &config, false, err.Error(), nil)
+		authMessage := fmt.Sprintf("Authentication failed: %v", err)
+		// Connected=true, but Ready=false due to auth failure
+		return r.updateStatus(ctx, &config, true, false, "Keycloak URL is reachable", authMessage, nil)
 	}
 
-	log.Info("Successfully connected to Keycloak instance",
-		"url", config.Spec.Url,
-		"version", serverInfo.SystemInfo.ServerVersion)
-	return r.updateConnectionStatus(ctx, &config, true, "Connected successfully", serverInfo)
+	// Phase 3: Test API functionality
+	serverInfo, err := r.testConnectionWithClient(ctx, client)
+	if err != nil {
+		apiMessage := fmt.Sprintf("API test failed: %v", err)
+		// Connected=true, but Ready=false due to API failure
+		return r.updateStatus(ctx, &config, true, false, "Keycloak URL is reachable", apiMessage, nil)
+	}
+
+	// All checks passed - both Connected and Ready are true
+	successMessage := fmt.Sprintf("Successfully authenticated and retrieved server info")
+	return r.updateStatus(ctx, &config, true, true, "Keycloak URL is reachable", successMessage, serverInfo)
 }
 
-func (r *KeycloakInstanceConfigReconciler) updateConnectionStatus(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig, connected bool, message string, serverInfo *keycloak.ServerInfo) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+func (r *KeycloakInstanceConfigReconciler) checkURLReachability(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig) (bool, string) {
+	// Create a simple HTTP client with timeout
+	client := &http.Client{
+		Timeout: time.Duration(config.Spec.Timeout) * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: config.Spec.TlsInsecureSkipVerify,
+			},
+		},
+	}
 
-	// Update the status
-	now := metav1.Now()
+	// Try to reach the base URL
+	testURL := fmt.Sprintf("%s%s", config.Spec.Url, config.Spec.BasePath)
 
-	var condition metav1.Condition
+	resp, err := client.Get(testURL)
+	if err != nil {
+		return false, fmt.Sprintf("Cannot reach Keycloak URL: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Any HTTP response (even 404, 401, etc.) means the URL is reachable
+	return true, "Keycloak URL is reachable"
+}
+
+func (r *KeycloakInstanceConfigReconciler) updateStatus(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig, connected, ready bool, connectMessage, readyMessage string, serverInfo *keycloak.ServerInfo) (ctrl.Result, error) {
+	now := metav1.NewTime(time.Now())
+
+	// Update Connected condition
+	var connectedCondition metav1.Condition
 	if connected {
-		condition = metav1.Condition{
+		connectedCondition = metav1.Condition{
 			Type:               TypeConnected,
 			Status:             metav1.ConditionTrue,
-			Reason:             ReasonConnectionSuccessful,
-			Message:            message,
+			Reason:             ReasonURLReachable,
+			Message:            connectMessage,
+			LastTransitionTime: now,
+		}
+	} else {
+		connectedCondition = metav1.Condition{
+			Type:               TypeConnected,
+			Status:             metav1.ConditionFalse,
+			Reason:             ReasonURLUnreachable,
+			Message:            connectMessage,
+			LastTransitionTime: now,
+		}
+	}
+
+	// Update Ready condition
+	var readyCondition metav1.Condition
+	if ready {
+		readyCondition = metav1.Condition{
+			Type:               TypeReady,
+			Status:             metav1.ConditionTrue,
+			Reason:             ReasonAuthenticationSuccessful,
+			Message:            readyMessage,
 			LastTransitionTime: now,
 		}
 		config.Status.LastConnected = &now
 
-		// Update server version if we have server info
 		if serverInfo != nil {
 			config.Status.ServerVersion = serverInfo.SystemInfo.ServerVersion
-			log.V(1).Info("Updated server version", "version", serverInfo.SystemInfo.ServerVersion)
 		}
 	} else {
-		condition = metav1.Condition{
-			Type:               TypeConnected,
+		var reason string
+		if !connected {
+			reason = ReasonURLUnreachable
+		} else {
+			// Connected but not ready means auth or API issues
+			if strings.Contains(strings.ToLower(readyMessage), "auth") {
+				reason = ReasonAuthenticationFailed
+			} else {
+				reason = ReasonAPIError
+			}
+		}
+
+		readyCondition = metav1.Condition{
+			Type:               TypeReady,
 			Status:             metav1.ConditionFalse,
-			Reason:             ReasonConnectionFailed,
-			Message:            message,
+			Reason:             reason,
+			Message:            readyMessage,
 			LastTransitionTime: now,
 		}
-		// Optionally clear server version on connection failure
-		// config.Status.ServerVersion = ""
 	}
 
-	// Update or add the condition
-	apimeta.SetStatusCondition(&config.Status.Conditions, condition)
+	meta.SetStatusCondition(&config.Status.Conditions, connectedCondition)
+	meta.SetStatusCondition(&config.Status.Conditions, readyCondition)
 
-	// Update ready condition based on connection status
-	readyCondition := metav1.Condition{
-		Type:               TypeReady,
-		Status:             metav1.ConditionTrue,
-		Reason:             ReasonConnectionSuccessful,
-		Message:            "Keycloak instance is ready",
-		LastTransitionTime: now,
-	}
-	if !connected {
-		readyCondition.Status = metav1.ConditionFalse
-		readyCondition.Reason = ReasonConnectionFailed
-		readyCondition.Message = "Keycloak instance is not ready: " + message
-	}
-	apimeta.SetStatusCondition(&config.Status.Conditions, readyCondition)
-
-	// Update the status subresource
 	if err := r.Status().Update(ctx, config); err != nil {
-		log.Error(err, "Failed to update KeycloakInstanceConfig status")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
 
-	log.V(1).Info("Updated KeycloakInstanceConfig status", "connected", connected, "message", message)
-
-	if !connected {
-		// Requeue with backoff if connection failed
-		return ctrl.Result{RequeueAfter: time.Minute * 2}, nil
+	if ready {
+		return ctrl.Result{RequeueAfter: time.Minute * 5}, nil
 	}
-
-	// Requeue periodically to check connection health
-	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 }
 
-func (r *KeycloakInstanceConfigReconciler) testConnection(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig) (*keycloak.ServerInfo, error) {
-	// Get the client from the manager
-	client, err := r.ClientManager.GetOrCreateClient(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Keycloak client: %w", err)
-	}
-
+func (r *KeycloakInstanceConfigReconciler) testConnectionWithClient(ctx context.Context, client *keycloak.KeycloakClient) (*keycloak.ServerInfo, error) {
 	// Try to get server info to test connection
 	serverInfo, err := client.GetServerInfo(ctx)
 	if err != nil {
