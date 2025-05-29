@@ -60,6 +60,19 @@ spec:
               enabled:
                 default: true
                 type: boolean
+              instanceConfigRef:
+                description: Reference to the KeycloakInstanceConfig
+                properties:
+                  name:
+                    description: Name of the KeycloakInstanceConfig
+                    type: string
+                  namespace:
+                    description: Namespace of the KeycloakInstanceConfig. If empty,
+                      uses the same namespace as the resource.
+                    type: string
+                required:
+                - name
+                type: object
               loginWithEmailAllowed:
                 default: true
                 type: boolean
@@ -84,6 +97,8 @@ spec:
                 type: boolean
               verifyEmail:
                 type: boolean
+            required:
+            - instanceConfigRef
             type: object
             x-kubernetes-validations:
             - message: duplicateEmailsAllowed must be false when loginWithEmailAllowed

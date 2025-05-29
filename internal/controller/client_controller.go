@@ -19,6 +19,7 @@ import (
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	keycloakTypes "github.com/keycloak/terraform-provider-keycloak/keycloak/types"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
+	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
 
 const (
@@ -30,8 +31,8 @@ const (
 // ClientReconciler reconciles a Client object
 type ClientReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	KeycloakClient *keycloak.KeycloakClient
+	Scheme        *runtime.Scheme
+	ClientManager *keycloakclientmanager.ClientManager
 }
 
 // ReconcileResult represents the outcome of a reconciliation operation
@@ -50,11 +51,6 @@ type ReconcileResult struct {
 func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("client", req.NamespacedName)
 
-	if err := r.validateReconciler(); err != nil {
-		logger.Error(err, "Controller not properly initialized")
-		return ctrl.Result{}, err
-	}
-
 	clientObj, err := r.fetchClient(ctx, req.NamespacedName)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -64,8 +60,19 @@ func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	// Get the KeycloakInstanceConfig
+	keycloakClient, err := r.getKeycloakClient(ctx, clientObj)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+	}
+
+	if err := r.validateReconciler(keycloakClient); err != nil {
+		logger.Error(err, "Controller not properly initialized")
+		return ctrl.Result{}, err
+	}
+
 	if r.isMarkedForDeletion(clientObj) {
-		return r.reconcileDelete(ctx, clientObj)
+		return r.reconcileDelete(ctx, keycloakClient, clientObj)
 	}
 
 	if err := r.ensureFinalizer(ctx, clientObj); err != nil {
@@ -87,12 +94,31 @@ func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.updateStatus(ctx, clientObj, *result)
 	}
 
-	return r.reconcileClient(ctx, clientObj, realm)
+	return r.reconcileClient(ctx, keycloakClient, clientObj, realm)
+}
+
+func (r *ClientReconciler) getKeycloakClient(ctx context.Context, clientObj *keycloakv1alpha1.Client) (*keycloak.KeycloakClient, error) {
+	// Assuming your Realm spec has a reference to KeycloakInstanceConfig
+	configName := clientObj.Spec.InstanceConfigRef.Name
+	configNamespace := clientObj.Namespace
+	if clientObj.Spec.InstanceConfigRef.Namespace != "" {
+		configNamespace = clientObj.Spec.InstanceConfigRef.Namespace
+	}
+
+	var config keycloakv1alpha1.KeycloakInstanceConfig
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      configName,
+		Namespace: configNamespace,
+	}, &config); err != nil {
+		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
+	}
+
+	return r.ClientManager.GetOrCreateClient(ctx, &config)
 }
 
 // validateReconciler ensures the controller is properly initialized
-func (r *ClientReconciler) validateReconciler() error {
-	if r.KeycloakClient == nil {
+func (r *ClientReconciler) validateReconciler(keycloakClient *keycloak.KeycloakClient) error {
+	if keycloakClient == nil {
 		return fmt.Errorf("KeycloakClient is nil - controller not properly initialized")
 	}
 	return nil
@@ -217,8 +243,8 @@ func (r *ClientReconciler) isCrossNamespaceReference(clientObj *keycloakv1alpha1
 }
 
 // reconcileClient handles the main client reconciliation logic
-func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
-	keycloakClient, err := r.getOrCreateClient(ctx, clientObj, realm)
+func (r *ClientReconciler) reconcileClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
+	keycloakOpenIdClient, err := r.getOrCreateClient(ctx, keycloakClient, clientObj, realm)
 	if err != nil {
 		result := ReconcileResult{
 			Ready:      false,
@@ -228,13 +254,13 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 		return r.updateStatus(ctx, clientObj, result)
 	}
 
-	clientChanged := keycloakClient == nil // If nil, it means we created
-	if keycloakClient != nil {
-		clientChanged = r.updateClientIfNeeded(ctx, clientObj, keycloakClient)
+	clientChanged := keycloakOpenIdClient == nil // If nil, it means we created
+	if keycloakOpenIdClient != nil {
+		clientChanged = r.updateClientIfNeeded(ctx, keycloakClient, clientObj, keycloakOpenIdClient)
 	}
 
 	if clientObj.Status.ClientUUID != "" {
-		if err := r.reconcileClientRoles(ctx, clientObj, realm); err != nil {
+		if err := r.reconcileClientRoles(ctx, keycloakClient, clientObj, realm); err != nil {
 			result := ReconcileResult{
 				Ready:      false,
 				RealmReady: true,
@@ -254,9 +280,9 @@ func (r *ClientReconciler) reconcileClient(ctx context.Context, clientObj *keycl
 }
 
 // getOrCreateClient retrieves an existing client or creates a new one
-func (r *ClientReconciler) getOrCreateClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (*keycloak.OpenidClient, error) {
+func (r *ClientReconciler) getOrCreateClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (*keycloak.OpenidClient, error) {
 	if clientObj.Status.ClientUUID != "" {
-		client, err := r.fetchExistingClient(ctx, clientObj, realm)
+		client, err := r.fetchExistingClient(ctx, keycloakClient, clientObj, realm)
 		if err != nil {
 			return nil, err
 		}
@@ -265,15 +291,15 @@ func (r *ClientReconciler) getOrCreateClient(ctx context.Context, clientObj *key
 		}
 	}
 
-	return nil, r.createNewClient(ctx, clientObj, realm)
+	return nil, r.createNewClient(ctx, keycloakClient, clientObj, realm)
 }
 
 // fetchExistingClient retrieves an existing client by UUID
-func (r *ClientReconciler) fetchExistingClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (*keycloak.OpenidClient, error) {
+func (r *ClientReconciler) fetchExistingClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) (*keycloak.OpenidClient, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Fetching client by UUID", "uuid", clientObj.Status.ClientUUID)
 
-	client, err := r.KeycloakClient.GetOpenidClient(ctx, realm.Name, clientObj.Status.ClientUUID)
+	client, err := keycloakClient.GetOpenidClient(ctx, realm.Name, clientObj.Status.ClientUUID)
 	if err != nil {
 		if keycloak.ErrorIs404(err) {
 			logger.Info("Client UUID not found in Keycloak, will recreate")
@@ -293,20 +319,20 @@ func (r *ClientReconciler) clearClientState(clientObj *keycloakv1alpha1.Client) 
 }
 
 // createNewClient creates a new client in Keycloak
-func (r *ClientReconciler) createNewClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) createNewClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Creating client in Keycloak")
 
 	newClient := r.buildClientFromSpec(clientObj, realm)
 
-	if err := r.KeycloakClient.NewOpenidClient(ctx, newClient); err != nil {
+	if err := keycloakClient.NewOpenidClient(ctx, newClient); err != nil {
 		if keycloak.ErrorIs409(err) {
 			return fmt.Errorf("client exists in Keycloak but UUID not tracked - manual intervention required")
 		}
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
-	return r.storeClientUUID(ctx, clientObj, realm)
+	return r.storeClientUUID(ctx, keycloakClient, clientObj, realm)
 }
 
 // buildClientFromSpec creates a new OpenidClient from the spec
@@ -348,9 +374,9 @@ func (r *ClientReconciler) buildClientFromSpec(clientObj *keycloakv1alpha1.Clien
 }
 
 // storeClientUUID fetches and stores the UUID of the created client
-func (r *ClientReconciler) storeClientUUID(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) storeClientUUID(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
-	createdClient, err := r.KeycloakClient.GetOpenidClientByClientId(ctx, realm.Name, clientObj.Spec.ClientID)
+	createdClient, err := keycloakClient.GetOpenidClientByClientId(ctx, realm.Name, clientObj.Spec.ClientID)
 	if err != nil {
 		return fmt.Errorf("client created but failed to retrieve UUID: %w", err)
 	}
@@ -363,17 +389,17 @@ func (r *ClientReconciler) storeClientUUID(ctx context.Context, clientObj *keycl
 }
 
 // updateClientIfNeeded checks for differences and updates the client if needed
-func (r *ClientReconciler) updateClientIfNeeded(ctx context.Context, clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) bool {
+func (r *ClientReconciler) updateClientIfNeeded(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, keycloakOpenIdClient *keycloak.OpenidClient) bool {
 	logger := log.FromContext(ctx)
-	diffs := r.getClientDiffs(clientObj, keycloakClient)
+	diffs := r.getClientDiffs(clientObj, keycloakOpenIdClient)
 	if len(diffs) == 0 {
 		return false
 	}
 
 	logger.Info("Client configuration changes detected", "changes", strings.Join(diffs, ", "))
 
-	updatedClient := r.applyChangesToClient(clientObj, keycloakClient)
-	if err := r.KeycloakClient.UpdateOpenidClient(ctx, updatedClient); err != nil {
+	updatedClient := r.applyChangesToClient(clientObj, keycloakOpenIdClient)
+	if err := keycloakClient.UpdateOpenidClient(ctx, updatedClient); err != nil {
 		logger.Error(err, "Failed to update client")
 		return false
 	}
@@ -383,8 +409,8 @@ func (r *ClientReconciler) updateClientIfNeeded(ctx context.Context, clientObj *
 }
 
 // applyChangesToClient applies spec changes to the Keycloak client
-func (r *ClientReconciler) applyChangesToClient(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) *keycloak.OpenidClient {
-	updatedClient := *keycloakClient
+func (r *ClientReconciler) applyChangesToClient(clientObj *keycloakv1alpha1.Client, keycloakOpenIdClient *keycloak.OpenidClient) *keycloak.OpenidClient {
+	updatedClient := *keycloakOpenIdClient
 
 	// Apply basic fields
 	updatedClient.Name = clientObj.Spec.Name
@@ -420,33 +446,33 @@ func (r *ClientReconciler) applyChangesToClient(clientObj *keycloakv1alpha1.Clie
 }
 
 // getClientDiffs compares client specifications and returns a list of differences
-func (r *ClientReconciler) getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakClient *keycloak.OpenidClient) []string {
+func (r *ClientReconciler) getClientDiffs(clientObj *keycloakv1alpha1.Client, keycloakOpenIdClient *keycloak.OpenidClient) []string {
 	var diffs []string
 
 	fields := []FieldDiff{
-		{"name", keycloakClient.Name, clientObj.Spec.Name},
-		{"description", keycloakClient.Description, clientObj.Spec.Description},
-		{"enabled", keycloakClient.Enabled, clientObj.Spec.Enabled},
-		{"rootUrl", derefStringPtr(keycloakClient.RootUrl), clientObj.Spec.RootUrl},
-		{"baseUrl", keycloakClient.BaseUrl, clientObj.Spec.BaseUrl},
-		{"adminUrl", keycloakClient.AdminUrl, clientObj.Spec.AdminUrl},
-		{"alwaysDisplayInConsole", keycloakClient.AlwaysDisplayInConsole, clientObj.Spec.AlwaysDisplayInConsole},
-		{"clientAuthenticatorType", keycloakClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
-		{"publicClient", keycloakClient.PublicClient, clientObj.Spec.PublicClient},
-		{"standardFlowEnabled", keycloakClient.StandardFlowEnabled, clientObj.Spec.StandardFlowEnabled},
-		{"directAccessGrantsEnabled", keycloakClient.DirectAccessGrantsEnabled, clientObj.Spec.DirectAccessGrantsEnabled},
-		{"implicitFlowEnabled", keycloakClient.ImplicitFlowEnabled, clientObj.Spec.ImplicitFlowEnabled},
-		{"serviceAccountsEnabled", keycloakClient.ServiceAccountsEnabled, clientObj.Spec.ServiceAccountsEnabled},
-		{"oauth2DeviceAuthorizationGrantEnabled", keycloakClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)},
-		{"loginTheme", keycloakClient.Attributes.LoginTheme, clientObj.Spec.LoginTheme},
-		{"consentRequired", keycloakClient.ConsentRequired, clientObj.Spec.ConsentRequired},
-		{"displayOnConsentScreen", keycloakClient.Attributes.DisplayOnConsentScreen, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen)},
-		{"consentScreenText", keycloakClient.Attributes.ConsentScreenText, clientObj.Spec.ConsentScreenText},
-		{"frontchannelLogoutEnabled", keycloakClient.FrontChannelLogoutEnabled, clientObj.Spec.FrontchannelLogoutEnabled},
-		{"frontchannelLogoutUrl", keycloakClient.Attributes.FrontchannelLogoutUrl, clientObj.Spec.FrontchannelLogoutUrl},
-		{"backchannelLogoutUrl", keycloakClient.Attributes.BackchannelLogoutUrl, clientObj.Spec.BackchannelLogoutUrl},
-		{"backchannelLogoutSessionRequired", keycloakClient.Attributes.BackchannelLogoutSessionRequired, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutSessionRequired)},
-		{"backchannelLogoutRevokeOfflineTokens", keycloakClient.Attributes.BackchannelLogoutRevokeOfflineTokens, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutRevokeOfflineTokens)},
+		{"name", keycloakOpenIdClient.Name, clientObj.Spec.Name},
+		{"description", keycloakOpenIdClient.Description, clientObj.Spec.Description},
+		{"enabled", keycloakOpenIdClient.Enabled, clientObj.Spec.Enabled},
+		{"rootUrl", derefStringPtr(keycloakOpenIdClient.RootUrl), clientObj.Spec.RootUrl},
+		{"baseUrl", keycloakOpenIdClient.BaseUrl, clientObj.Spec.BaseUrl},
+		{"adminUrl", keycloakOpenIdClient.AdminUrl, clientObj.Spec.AdminUrl},
+		{"alwaysDisplayInConsole", keycloakOpenIdClient.AlwaysDisplayInConsole, clientObj.Spec.AlwaysDisplayInConsole},
+		{"clientAuthenticatorType", keycloakOpenIdClient.ClientAuthenticatorType, clientObj.Spec.ClientAuthenticatorType},
+		{"publicClient", keycloakOpenIdClient.PublicClient, clientObj.Spec.PublicClient},
+		{"standardFlowEnabled", keycloakOpenIdClient.StandardFlowEnabled, clientObj.Spec.StandardFlowEnabled},
+		{"directAccessGrantsEnabled", keycloakOpenIdClient.DirectAccessGrantsEnabled, clientObj.Spec.DirectAccessGrantsEnabled},
+		{"implicitFlowEnabled", keycloakOpenIdClient.ImplicitFlowEnabled, clientObj.Spec.ImplicitFlowEnabled},
+		{"serviceAccountsEnabled", keycloakOpenIdClient.ServiceAccountsEnabled, clientObj.Spec.ServiceAccountsEnabled},
+		{"oauth2DeviceAuthorizationGrantEnabled", keycloakOpenIdClient.Attributes.Oauth2DeviceAuthorizationGrantEnabled, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.Oauth2DeviceAuthorizationGrantEnabled)},
+		{"loginTheme", keycloakOpenIdClient.Attributes.LoginTheme, clientObj.Spec.LoginTheme},
+		{"consentRequired", keycloakOpenIdClient.ConsentRequired, clientObj.Spec.ConsentRequired},
+		{"displayOnConsentScreen", keycloakOpenIdClient.Attributes.DisplayOnConsentScreen, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.DisplayOnConsentScreen)},
+		{"consentScreenText", keycloakOpenIdClient.Attributes.ConsentScreenText, clientObj.Spec.ConsentScreenText},
+		{"frontchannelLogoutEnabled", keycloakOpenIdClient.FrontChannelLogoutEnabled, clientObj.Spec.FrontchannelLogoutEnabled},
+		{"frontchannelLogoutUrl", keycloakOpenIdClient.Attributes.FrontchannelLogoutUrl, clientObj.Spec.FrontchannelLogoutUrl},
+		{"backchannelLogoutUrl", keycloakOpenIdClient.Attributes.BackchannelLogoutUrl, clientObj.Spec.BackchannelLogoutUrl},
+		{"backchannelLogoutSessionRequired", keycloakOpenIdClient.Attributes.BackchannelLogoutSessionRequired, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutSessionRequired)},
+		{"backchannelLogoutRevokeOfflineTokens", keycloakOpenIdClient.Attributes.BackchannelLogoutRevokeOfflineTokens, keycloakTypes.KeycloakBoolQuoted(clientObj.Spec.BackchannelLogoutRevokeOfflineTokens)},
 	}
 
 	for _, field := range fields {
@@ -456,16 +482,16 @@ func (r *ClientReconciler) getClientDiffs(clientObj *keycloakv1alpha1.Client, ke
 	}
 
 	// Handle slice fields
-	if !r.slicesEqual(keycloakClient.ValidRedirectUris, clientObj.Spec.RedirectUris) {
-		diffs = append(diffs, fmt.Sprintf("validRedirectUris: %v -> %v", keycloakClient.ValidRedirectUris, clientObj.Spec.RedirectUris))
+	if !r.slicesEqual(keycloakOpenIdClient.ValidRedirectUris, clientObj.Spec.RedirectUris) {
+		diffs = append(diffs, fmt.Sprintf("validRedirectUris: %v -> %v", keycloakOpenIdClient.ValidRedirectUris, clientObj.Spec.RedirectUris))
 	}
 
-	if !r.slicesEqual(keycloakClient.WebOrigins, clientObj.Spec.WebOrigins) {
-		diffs = append(diffs, fmt.Sprintf("webOrigins: %v -> %v", keycloakClient.WebOrigins, clientObj.Spec.WebOrigins))
+	if !r.slicesEqual(keycloakOpenIdClient.WebOrigins, clientObj.Spec.WebOrigins) {
+		diffs = append(diffs, fmt.Sprintf("webOrigins: %v -> %v", keycloakOpenIdClient.WebOrigins, clientObj.Spec.WebOrigins))
 	}
 
-	if !r.slicesEqual(keycloakClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris) {
-		diffs = append(diffs, fmt.Sprintf("postLogoutRedirectUris: %v -> %v", keycloakClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris))
+	if !r.slicesEqual(keycloakOpenIdClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris) {
+		diffs = append(diffs, fmt.Sprintf("postLogoutRedirectUris: %v -> %v", keycloakOpenIdClient.Attributes.PostLogoutRedirectUris, clientObj.Spec.PostLogoutRedirectUris))
 	}
 
 	return diffs
@@ -488,17 +514,17 @@ func (r *ClientReconciler) slicesEqual(a, b []string) bool {
 }
 
 // getClientRolesForSingleClient retrieves roles for a specific client
-func (r *ClientReconciler) getClientRolesForSingleClient(ctx context.Context, realmName, clientUUID string) ([]*keycloak.Role, error) {
+func (r *ClientReconciler) getClientRolesForSingleClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, realmName, clientUUID string) ([]*keycloak.Role, error) {
 	mockClients := []*keycloak.OpenidClient{{Id: clientUUID}}
-	return r.KeycloakClient.GetClientRoles(ctx, realmName, mockClients)
+	return keycloakClient.GetClientRoles(ctx, realmName, mockClients)
 }
 
 // reconcileClientRoles handles role synchronization for the client
-func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 	r.initializeRoleUUIDs(clientObj)
 
-	existingRoles, err := r.getClientRolesForSingleClient(ctx, realm.Name, clientObj.Status.ClientUUID)
+	existingRoles, err := r.getClientRolesForSingleClient(ctx, keycloakClient, realm.Name, clientObj.Status.ClientUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get existing client roles: %w", err)
 	}
@@ -512,11 +538,11 @@ func (r *ClientReconciler) reconcileClientRoles(ctx context.Context, clientObj *
 
 	r.cleanupTrackedRoles(ctx, clientObj, desiredRoles)
 
-	if err := r.deleteUnwantedRoles(ctx, existingRoles, desiredRoles, realm.Name); err != nil {
+	if err := r.deleteUnwantedRoles(ctx, keycloakClient, existingRoles, desiredRoles, realm.Name); err != nil {
 		return err
 	}
 
-	if err := r.createOrUpdateRoles(ctx, existingRoleMap, desiredRoles, clientObj, realm); err != nil {
+	if err := r.createOrUpdateRoles(ctx, keycloakClient, existingRoleMap, desiredRoles, clientObj, realm); err != nil {
 		return err
 	}
 
@@ -561,13 +587,13 @@ func (r *ClientReconciler) cleanupTrackedRoles(ctx context.Context, clientObj *k
 }
 
 // deleteUnwantedRoles deletes roles that exist in Keycloak but are not desired
-func (r *ClientReconciler) deleteUnwantedRoles(ctx context.Context, existingRoles []*keycloak.Role, desiredRoles map[string]keycloakv1alpha1.RoleSpec, realmName string) error {
+func (r *ClientReconciler) deleteUnwantedRoles(ctx context.Context, keycloakClient *keycloak.KeycloakClient, existingRoles []*keycloak.Role, desiredRoles map[string]keycloakv1alpha1.RoleSpec, realmName string) error {
 	logger := log.FromContext(ctx)
 	for _, existingRole := range existingRoles {
 		if _, stillDesired := desiredRoles[existingRole.Name]; !stillDesired {
 			logger.Info("Deleting unwanted client role", "role", existingRole.Name, "uuid", existingRole.Id)
 
-			if err := r.KeycloakClient.DeleteRole(ctx, realmName, existingRole.Id); err != nil {
+			if err := keycloakClient.DeleteRole(ctx, realmName, existingRole.Id); err != nil {
 				if !keycloak.ErrorIs404(err) {
 					return fmt.Errorf("failed to delete role %s: %w", existingRole.Name, err)
 				}
@@ -581,15 +607,15 @@ func (r *ClientReconciler) deleteUnwantedRoles(ctx context.Context, existingRole
 }
 
 // createOrUpdateRoles creates new roles or updates existing ones
-func (r *ClientReconciler) createOrUpdateRoles(ctx context.Context, existingRoleMap map[string]*keycloak.Role, desiredRoles map[string]keycloakv1alpha1.RoleSpec, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) createOrUpdateRoles(ctx context.Context, keycloakClient *keycloak.KeycloakClient, existingRoleMap map[string]*keycloak.Role, desiredRoles map[string]keycloakv1alpha1.RoleSpec, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	for roleName, roleSpec := range desiredRoles {
 		if existingRole, exists := existingRoleMap[roleName]; exists {
-			if err := r.updateRoleIfNeeded(ctx, existingRole, roleSpec); err != nil {
+			if err := r.updateRoleIfNeeded(ctx, keycloakClient, existingRole, roleSpec); err != nil {
 				return err
 			}
 			clientObj.Status.RoleUUIDs[roleName] = existingRole.Id
 		} else {
-			if err := r.createRole(ctx, roleName, roleSpec, clientObj, realm); err != nil {
+			if err := r.createRole(ctx, keycloakClient, roleName, roleSpec, clientObj, realm); err != nil {
 				return err
 			}
 		}
@@ -598,7 +624,7 @@ func (r *ClientReconciler) createOrUpdateRoles(ctx context.Context, existingRole
 }
 
 // updateRoleIfNeeded updates a role if its description has changed
-func (r *ClientReconciler) updateRoleIfNeeded(ctx context.Context, existingRole *keycloak.Role, roleSpec keycloakv1alpha1.RoleSpec) error {
+func (r *ClientReconciler) updateRoleIfNeeded(ctx context.Context, keycloakClient *keycloak.KeycloakClient, existingRole *keycloak.Role, roleSpec keycloakv1alpha1.RoleSpec) error {
 	logger := log.FromContext(ctx)
 	if existingRole.Description != roleSpec.Description {
 		logger.Info("Updating client role", "role", existingRole.Name)
@@ -615,7 +641,7 @@ func (r *ClientReconciler) updateRoleIfNeeded(ctx context.Context, existingRole 
 			Attributes:  existingRole.Attributes,
 		}
 
-		if err := r.KeycloakClient.UpdateRole(ctx, updatedRole); err != nil {
+		if err := keycloakClient.UpdateRole(ctx, updatedRole); err != nil {
 			return fmt.Errorf("failed to update role %s: %w", existingRole.Name, err)
 		}
 		logger.Info("Successfully updated client role", "role", existingRole.Name)
@@ -624,7 +650,7 @@ func (r *ClientReconciler) updateRoleIfNeeded(ctx context.Context, existingRole 
 }
 
 // createRole creates a new role in Keycloak
-func (r *ClientReconciler) createRole(ctx context.Context, roleName string, roleSpec keycloakv1alpha1.RoleSpec, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) createRole(ctx context.Context, keycloakClient *keycloak.KeycloakClient, roleName string, roleSpec keycloakv1alpha1.RoleSpec, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Creating client role", "role", roleName)
 
@@ -639,7 +665,7 @@ func (r *ClientReconciler) createRole(ctx context.Context, roleName string, role
 		Attributes:  make(map[string][]string),
 	}
 
-	if err := r.KeycloakClient.CreateRole(ctx, newRole); err != nil {
+	if err := keycloakClient.CreateRole(ctx, newRole); err != nil {
 		return fmt.Errorf("failed to create role %s: %w", roleName, err)
 	}
 
@@ -657,12 +683,12 @@ func (r *ClientReconciler) getSuccessMessage(clientChanged bool) string {
 }
 
 // reconcileDelete handles client deletion
-func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycloakv1alpha1.Client) (ctrl.Result, error) {
+func (r *ClientReconciler) reconcileDelete(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(clientObj, clientFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.deleteClientFromKeycloak(ctx, clientObj); err != nil {
+	if err := r.deleteClientFromKeycloak(ctx, keycloakClient, clientObj); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -671,7 +697,7 @@ func (r *ClientReconciler) reconcileDelete(ctx context.Context, clientObj *keycl
 }
 
 // deleteClientFromKeycloak handles the actual deletion from Keycloak
-func (r *ClientReconciler) deleteClientFromKeycloak(ctx context.Context, clientObj *keycloakv1alpha1.Client) error {
+func (r *ClientReconciler) deleteClientFromKeycloak(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client) error {
 	logger := log.FromContext(ctx)
 	if clientObj.Status.ClientUUID == "" {
 		logger.Info("No UUID stored - skipping Keycloak deletion")
@@ -689,12 +715,12 @@ func (r *ClientReconciler) deleteClientFromKeycloak(ctx context.Context, clientO
 		return nil
 	}
 
-	r.deleteClientRoles(ctx, clientObj, realm)
-	return r.deleteClient(ctx, clientObj, realm)
+	r.deleteClientRoles(ctx, keycloakClient, clientObj, realm)
+	return r.deleteClient(ctx, keycloakClient, clientObj, realm)
 }
 
 // deleteClientRoles deletes all client roles
-func (r *ClientReconciler) deleteClientRoles(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) {
+func (r *ClientReconciler) deleteClientRoles(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) {
 	logger := log.FromContext(ctx)
 	if len(clientObj.Status.RoleUUIDs) == 0 {
 		return
@@ -702,7 +728,7 @@ func (r *ClientReconciler) deleteClientRoles(ctx context.Context, clientObj *key
 
 	logger.Info("Deleting client roles from Keycloak", "roleCount", len(clientObj.Status.RoleUUIDs))
 	for roleName, roleUUID := range clientObj.Status.RoleUUIDs {
-		if err := r.KeycloakClient.DeleteRole(ctx, realm.Name, roleUUID); err != nil {
+		if err := keycloakClient.DeleteRole(ctx, realm.Name, roleUUID); err != nil {
 			if !keycloak.ErrorIs404(err) {
 				logger.Error(err, "Failed to delete client role", "role", roleName)
 			}
@@ -711,11 +737,11 @@ func (r *ClientReconciler) deleteClientRoles(ctx context.Context, clientObj *key
 }
 
 // deleteClient deletes the client itself
-func (r *ClientReconciler) deleteClient(ctx context.Context, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
+func (r *ClientReconciler) deleteClient(ctx context.Context, keycloakClient *keycloak.KeycloakClient, clientObj *keycloakv1alpha1.Client, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Deleting client from Keycloak", "uuid", clientObj.Status.ClientUUID)
 
-	if err := r.KeycloakClient.DeleteOpenidClient(ctx, realm.Name, clientObj.Status.ClientUUID); err != nil {
+	if err := keycloakClient.DeleteOpenidClient(ctx, realm.Name, clientObj.Status.ClientUUID); err != nil {
 		if keycloak.ErrorIs404(err) {
 			logger.Info("Client already deleted from Keycloak")
 			return nil

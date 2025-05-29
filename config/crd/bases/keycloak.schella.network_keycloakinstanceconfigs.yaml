@@ -1,0 +1,211 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: keycloakinstanceconfigs.keycloak.schella.network
+spec:
+  group: keycloak.schella.network
+  names:
+    kind: KeycloakInstanceConfig
+    listKind: KeycloakInstanceConfigList
+    plural: keycloakinstanceconfigs
+    singular: keycloakinstanceconfig
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Connected')].status
+      name: Connected
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.serverVersion
+      name: Version
+      type: string
+    - jsonPath: .status.lastConnected
+      name: Last Connected
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: KeycloakInstanceConfig is the Schema for the keycloakinstanceconfigs
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              additionalHeaders:
+                additionalProperties:
+                  type: string
+                description: A map of custom HTTP headers to add to each request to
+                  the Keycloak API.
+                type: object
+              basePath:
+                description: The base path used for accessing the Keycloak REST API.
+                  Defaults to an empty string. Note that users of the legacy distribution
+                  of Keycloak will need to set this attribute to /auth
+                type: string
+                x-kubernetes-validations:
+                - message: basePath must start with /
+                  rule: size(self) == 0 || self.startsWith('/')
+                - message: basePath must not end with / (except for root path)
+                  rule: size(self) == 0 || self == '/' || !self.endsWith('/')
+              caCert:
+                description: Allows x509 calls using a CA certificate
+                type: string
+              clientId:
+                default: admin-cli
+                description: The client_id for the client that was created in the
+                  "Keycloak Setup" section. Use the admin-cli client if you are using
+                  the password grant.
+                type: string
+              clientSecret:
+                description: The secret for the client used by the provider for authentication
+                  via the client credentials grant. This can be found or changed using
+                  the "Credentials" tab in the client settings. This attribute is
+                  required when using the client credentials grant, and cannot be
+                  set when using the password grant.
+                type: string
+              password:
+                description: The password of the user used by the provider for authentication
+                  via the password grant. Required when using the password grant,
+                  and cannot be set when using the client credentials grant.
+                type: string
+              realm:
+                default: master
+                description: The realm used by the provider for authentication. Defaults
+                  to master.
+                maxLength: 255
+                minLength: 1
+                type: string
+              timeout:
+                default: 15
+                description: Sets the timeout of the client when addressing Keycloak,
+                  in seconds. Defaults to 15.
+                type: integer
+              tlsInsecureSkipVerify:
+                default: false
+                description: Allows ignoring insecure certificates when set to true.
+                  Defaults to false. Disabling this security check is dangerous and
+                  should only be done in local or test environments!
+                type: boolean
+              url:
+                description: The URL of the Keycloak instance, before /auth/admin
+                type: string
+                x-kubernetes-validations:
+                - message: url must be a valid HTTP or HTTPS URL
+                  rule: self.matches('^https?://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?(/.*)?$')
+              username:
+                description: The username of the user used by the provider for authentication
+                  via the password grant. Required when using the password grant,
+                  and cannot be set when using the client credentials grant.
+                type: string
+            required:
+            - clientId
+            - realm
+            - url
+            type: object
+            x-kubernetes-validations:
+            - message: clientSecret cannot be used together with username or password
+              rule: '!(has(self.clientSecret) && (has(self.username) || has(self.password)))'
+            - message: username and password must be provided together
+              rule: '!(has(self.username) && !has(self.password)) && !(has(self.password)
+                && !has(self.username))'
+          status:
+            description: KeycloakInstanceConfigStatus defines the observed state of
+              KeycloakInstanceConfig
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of the connection state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastConnected:
+                description: LastConnected represents the last time a successful connection
+                  was made
+                format: date-time
+                type: string
+              serverVersion:
+                description: ServerVersion represents the version of the connected
+                  Keycloak server
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

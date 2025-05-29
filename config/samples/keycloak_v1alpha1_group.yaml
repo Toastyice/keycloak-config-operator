@@ -6,10 +6,10 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: group-minimal-sample
 spec:
-  # Required: Reference to the realm this group belongs to
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
   realmRef:
     name: realm-sample
-  # Required: Name of the group
   name: group-minimal-sample
 ---
 apiVersion: keycloak.schella.network/v1alpha1
@@ -20,6 +20,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: group-complete-sample
 spec:
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
+    namespace: default
   # Required: Reference to the realm this group belongs to
   realmRef:
     name: realm-sample

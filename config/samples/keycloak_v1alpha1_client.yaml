@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: client-minimal
 spec:
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
   realmRef:
     name: realm-sample
   clientId: client-minimal
@@ -19,6 +21,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: client-sample
 spec:
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
+    namespace: default  # Optional, defaults to same namespace
   realmRef:
     name: realm-sample
     namespace: default  # Optional, defaults to same namespace

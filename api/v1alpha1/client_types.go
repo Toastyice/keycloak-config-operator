@@ -14,6 +14,10 @@ import (
 // +kubebuilder:validation:XValidation:rule=`!has(self.backchannelLogoutUrl) || size(self.backchannelLogoutUrl) == 0 || !self.frontchannelLogoutEnabled`,message="backchannelLogoutUrl can only be set when frontchannelLogoutEnabled is false"
 // +kubebuilder:validation:XValidation:rule=`!self.frontchannelLogoutEnabled || !self.backchannelLogoutSessionRequired`,message="backchannelLogoutSessionRequired must be false when frontchannelLogoutEnabled is true"
 type ClientSpec struct {
+	// Reference to the KeycloakInstanceConfig
+	// +kubebuilder:validation:Required
+	InstanceConfigRef InstanceConfigReference `json:"instanceConfigRef"`
+
 	// RealmRef specifies which realm this client belongs to
 	// +kubebuilder:validation:Required
 	RealmRef RealmReference `json:"realmRef"`

@@ -1,0 +1,56 @@
+apiVersion: keycloak.schella.network/v1alpha1
+kind: KeycloakInstanceConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: keycloakinstanceconfig-sample
+spec:
+  url: http://host.docker.internal:8080
+  basePath: /auth
+  realm: master
+  clientId: admin-cli
+  #clientSecret: "123"
+  username: admin
+  password: adminadmin
+  timeout: 15
+  tlsInsecureSkipVerify: false
+  #caCert: |
+  #  -----BEGIN CERTIFICATE-----
+  #  MIIFazCCA1OgAwIBAgIUQxKzJb8fY2vJ9mK3XhG4bH1nP8gwDQYJKoZIhvcNAQEL
+  #  BQAwRTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcM
+  #  DU1vdW50YWluIFZpZXcxCTAHBgNVBAoMAENvcnAwHhcNMjQwMTE1MTIwMDAwWhcN
+  #  MzQwMTEzMTIwMDAwWjBFMQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5p
+  #  YTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEJMAcGA1UECgwAQ29ycDCCAiIwDQYJ
+  #  KoZIhvcNAQEBBQADggIPADCCAgoCggIBAM1PvRzN8lJ5QJf2vK7uJ9NxG2hK5mI3
+  #  4TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG2hK5mI
+  #  34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG2hK5m
+  #  I34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG2hK5
+  #  mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG2h
+  #  K5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG
+  #  2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ9N
+  #  xG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7uJ
+  #  9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7
+  #  uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2v
+  #  K7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf
+  #  2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mQIDAQABo1MwUTAdBgNVHQ4EFgQU8qm5JF
+  #  nJ5QJf2vK7uJ9NxG2hK5mI34EwHwYDVR0jBBgwFoAU8qm5JFnJ5QJf2vK7uJ9Nx
+  #  G2hK5mI34EwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAgEAK5uJ
+  #  9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2vK7
+  #  uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf2v
+  #  K7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5QJf
+  #  2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ5Q
+  #  Jf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9nJ
+  #  5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2mL9
+  #  nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG2m
+  #  L9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3hG
+  #  2mL9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9nK3
+  #  hG2mL9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ9n
+  #  K3hG2mL9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5mJ
+  #  9nK3hG2mL9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBxN8vK2mL9nM5hG8jN3qP2vL5
+  #  mJ9nK3hG2mL9nJ5QJf2vK7uJ9NxG2hK5mI34TqLpBE=
+  #  -----END CERTIFICATE-----
+  #additionalHeaders:
+  #  X-Custom-Auth: "bearer-token-here"
+  #  X-Request-ID: "unique-request-id"
+  #  X-Forwarded-For: "192.168.1.100"

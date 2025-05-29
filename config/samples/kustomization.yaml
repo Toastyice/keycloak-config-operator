@@ -1,5 +1,6 @@
 ## Append samples of your project ##
 resources:
+- keycloak_v1alpha1_keycloakinstanceconfig.yaml
 - keycloak_v1alpha1_realm.yaml
 - keycloak_v1alpha1_client.yaml
 - keycloak_v1alpha1_group.yaml

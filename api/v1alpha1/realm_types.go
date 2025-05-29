@@ -7,6 +7,9 @@ import (
 // RealmSpec defines the desired state of Realm
 // +kubebuilder:validation:XValidation:rule="!(self.loginWithEmailAllowed == true || self.registrationEmailAsUsername == true) || self.duplicateEmailsAllowed == false",message="duplicateEmailsAllowed must be false when loginWithEmailAllowed or registrationEmailAsUsername is true"
 type RealmSpec struct {
+	// Reference to the KeycloakInstanceConfig
+	// +kubebuilder:validation:Required
+	InstanceConfigRef InstanceConfigReference `json:"instanceConfigRef"`
 
 	// +optional
 	// +kubebuilder:default=true
