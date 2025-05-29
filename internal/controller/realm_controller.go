@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
+	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
 
 const realmFinalizer = "realm.keycloak.schella.network/finalizer"
@@ -24,8 +26,8 @@ const realmFinalizer = "realm.keycloak.schella.network/finalizer"
 // RealmReconciler reconciles a Realm object
 type RealmReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	KeycloakClient *keycloak.KeycloakClient
+	Scheme        *runtime.Scheme
+	ClientManager *keycloakclientmanager.ClientManager
 }
 
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=realms,verbs=get;list;watch;create;update;patch;delete
@@ -46,9 +48,15 @@ func (r *RealmReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
+	// Get the KeycloakInstanceConfig
+	keycloakClient, err := r.getKeycloakClient(ctx, &realm)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+	}
+
 	// Check if the realm is being deleted
 	if !realm.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, &realm)
+		return r.reconcileDelete(ctx, keycloakClient, &realm)
 	}
 
 	// Add finalizer if it doesn't exist
@@ -60,7 +68,26 @@ func (r *RealmReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Reconcile the realm
-	return r.reconcileRealm(ctx, &realm)
+	return r.reconcileRealm(ctx, keycloakClient, &realm)
+}
+
+func (r *RealmReconciler) getKeycloakClient(ctx context.Context, realm *keycloakv1alpha1.Realm) (*keycloak.KeycloakClient, error) {
+	// Assuming your Realm spec has a reference to KeycloakInstanceConfig
+	configName := realm.Spec.InstanceConfigRef.Name
+	configNamespace := realm.Namespace
+	if realm.Spec.InstanceConfigRef.Namespace != "" {
+		configNamespace = realm.Spec.InstanceConfigRef.Namespace
+	}
+
+	var config keycloakv1alpha1.KeycloakInstanceConfig
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      configName,
+		Namespace: configNamespace,
+	}, &config); err != nil {
+		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
+	}
+
+	return r.ClientManager.GetOrCreateClient(ctx, &config)
 }
 
 // getDiffs compares realm specifications and returns a list of differences
@@ -102,11 +129,11 @@ func getDiffs(realm *keycloakv1alpha1.Realm, keycloakRealm *keycloak.Realm) []st
 	return diffs
 }
 
-func (r *RealmReconciler) reconcileRealm(ctx context.Context, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
+func (r *RealmReconciler) reconcileRealm(ctx context.Context, keycloakClient *keycloak.KeycloakClient, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Check if realm exists in Keycloak
-	keycloakRealm, err := r.KeycloakClient.GetRealm(ctx, realm.Name)
+	keycloakRealm, err := keycloakClient.GetRealm(ctx, realm.Name)
 	if err != nil {
 		// Check if it's a 404 error (realm doesn't exist)
 		if keycloak.ErrorIs404(err) {
@@ -131,7 +158,7 @@ func (r *RealmReconciler) reconcileRealm(ctx context.Context, realm *keycloakv1a
 				EditUsernameAllowed:         realm.Spec.EditUsernameAllowed,
 			}
 
-			if err := r.KeycloakClient.NewRealm(ctx, newRealm); err != nil {
+			if err := keycloakClient.NewRealm(ctx, newRealm); err != nil {
 				// Check if it's a 409 conflict (realm already exists - race condition)
 				if keycloak.ErrorIs409(err) {
 					log.Info("Realm already exists (conflict), will check again", "realm", realm.Name)
@@ -174,7 +201,7 @@ func (r *RealmReconciler) reconcileRealm(ctx context.Context, realm *keycloakv1a
 		updatedRealm.EditUsernameAllowed = realm.Spec.EditUsernameAllowed
 
 		// Perform the update
-		if err := r.KeycloakClient.UpdateRealm(ctx, &updatedRealm); err != nil {
+		if err := keycloakClient.UpdateRealm(ctx, &updatedRealm); err != nil {
 			log.Error(err, "Failed to update realm", "realm", realm.Name)
 			return r.updateStatus(ctx, realm, false, fmt.Sprintf("Failed to update realm: %v", err))
 		}
@@ -187,7 +214,7 @@ func (r *RealmReconciler) reconcileRealm(ctx context.Context, realm *keycloakv1a
 	return r.updateStatus(ctx, realm, true, "Realm synchronized")
 }
 
-func (r *RealmReconciler) reconcileDelete(ctx context.Context, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
+func (r *RealmReconciler) reconcileDelete(ctx context.Context, keycloakClient *keycloak.KeycloakClient, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Check if we have the finalizer
@@ -195,7 +222,7 @@ func (r *RealmReconciler) reconcileDelete(ctx context.Context, realm *keycloakv1
 		// Delete the realm from Keycloak
 		log.Info("Deleting realm from Keycloak", "realm", realm.Name)
 
-		if err := r.KeycloakClient.DeleteRealm(ctx, realm.Name); err != nil {
+		if err := keycloakClient.DeleteRealm(ctx, realm.Name); err != nil {
 			// Check if it's a 404 error (realm already doesn't exist)
 			if keycloak.ErrorIs404(err) {
 				log.Info("Realm already deleted from Keycloak", "realm", realm.Name)

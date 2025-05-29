@@ -38,9 +38,8 @@ import (
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	"github.com/toastyice/keycloak-config-operator/internal/controller"
 
-	"context"
-
-	"github.com/keycloak/terraform-provider-keycloak/keycloak"
+	//"github.com/keycloak/terraform-provider-keycloak/keycloak"
+	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -101,28 +100,7 @@ func main() {
 	})
 
 	// init Keycloak client
-	initCtx := context.Background() //TODO use short lived context?
-	keycloakClient, err := keycloak.NewKeycloakClient(
-		initCtx,
-		"http://host.docker.internal:8080", //"http://localhost:8080",
-		"/auth",
-		"admin-cli",
-		"", // can be empty if client is public
-		"master",
-		"admin",                           // actual username
-		"adminadmin",                      // actual password
-		true,                              // perform initial login
-		30,                                // timeout
-		"",                                // CA cert
-		false,                             // skip TLS verification
-		"keycloak-config-operator/in-dev", // user agent
-		false,                             // Red Hat SSO
-		nil,                               // additional headers
-	)
-	if err != nil {
-		setupLog.Error(err, "unable to create Keycloak client")
-		os.Exit(1)
-	}
+	clientManager := keycloakclientmanager.NewClientManager()
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
@@ -173,32 +151,33 @@ func main() {
 	}
 
 	if err = (&controller.RealmReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		KeycloakClient: keycloakClient,
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		ClientManager: clientManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Realm")
 		os.Exit(1)
 	}
-	if err = (&controller.ClientReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		KeycloakClient: keycloakClient,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Client")
-		os.Exit(1)
-	}
-	if err = (&controller.GroupReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		KeycloakClient: keycloakClient,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Group")
-		os.Exit(1)
-	}
+	//if err = (&controller.ClientReconciler{
+	//	Client:         mgr.GetClient(),
+	//	Scheme:         mgr.GetScheme(),
+	//	KeycloakClient: keycloakClient,
+	//}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Client")
+	//	os.Exit(1)
+	//}
+	//if err = (&controller.GroupReconciler{
+	//	Client:         mgr.GetClient(),
+	//	Scheme:         mgr.GetScheme(),
+	//	KeycloakClient: keycloakClient,
+	//}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Group")
+	//	os.Exit(1)
+	//}
 	if err = (&controller.KeycloakInstanceConfigReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		ClientManager: clientManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KeycloakInstanceConfig")
 		os.Exit(1)

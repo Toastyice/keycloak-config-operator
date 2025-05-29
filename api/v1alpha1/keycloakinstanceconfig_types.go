@@ -63,8 +63,13 @@ type KeycloakInstanceConfigSpec struct {
 
 // KeycloakInstanceConfigStatus defines the observed state of KeycloakInstanceConfig
 type KeycloakInstanceConfigStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Conditions represent the latest available observations of the connection state
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// LastConnected represents the last time a successful connection was made
+	// +optional
+	LastConnected *metav1.Time `json:"lastConnected,omitempty"`
 }
 
 // +kubebuilder:object:root=true

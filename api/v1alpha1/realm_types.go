@@ -7,6 +7,9 @@ import (
 // RealmSpec defines the desired state of Realm
 // +kubebuilder:validation:XValidation:rule="!(self.loginWithEmailAllowed == true || self.registrationEmailAsUsername == true) || self.duplicateEmailsAllowed == false",message="duplicateEmailsAllowed must be false when loginWithEmailAllowed or registrationEmailAsUsername is true"
 type RealmSpec struct {
+	// Reference to the KeycloakInstanceConfig
+	// +kubebuilder:validation:Required
+	InstanceConfigRef InstanceConfigReference `json:"instanceConfigRef"`
 
 	// +optional
 	// +kubebuilder:default=true
@@ -64,6 +67,16 @@ type RealmSpec struct {
 	// +optional
 	// +kubebuilder:validation:Type=boolean
 	EditUsernameAllowed bool `json:"editUsernameAllowed,omitempty"`
+}
+
+type InstanceConfigReference struct {
+	// Name of the KeycloakInstanceConfig
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace of the KeycloakInstanceConfig. If empty, uses the same namespace as the resource.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // RealmStatus defines the observed state of Realm

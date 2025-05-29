@@ -6,6 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: realm-sample
 spec:
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
   enabled: true
   displayName: "Sample displayName"
   displayNameHtml: "<b> Sample displayNameHtml </b>"
