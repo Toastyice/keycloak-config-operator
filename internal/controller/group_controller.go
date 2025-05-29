@@ -20,6 +20,7 @@ import (
 
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
+	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
 
 const (
@@ -31,8 +32,8 @@ const (
 // GroupReconciler reconciles a Group object
 type GroupReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	KeycloakClient *keycloak.KeycloakClient
+	Scheme        *runtime.Scheme
+	ClientManager *keycloakclientmanager.ClientManager
 }
 
 // GroupReconcileResult represents the outcome of a group reconciliation operation
@@ -58,11 +59,6 @@ type GroupFieldDiff struct {
 func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("group", req.NamespacedName)
 
-	if err := r.validateReconciler(); err != nil {
-		logger.Error(err, "Controller not properly initialized")
-		return ctrl.Result{}, err
-	}
-
 	groupObj, err := r.fetchGroup(ctx, req.NamespacedName)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -72,8 +68,19 @@ func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
+	// Get the KeycloakInstanceConfig
+	keycloakClient, err := r.getKeycloakClient(ctx, groupObj)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+	}
+
+	if err := r.validateReconciler(keycloakClient); err != nil {
+		logger.Error(err, "Controller not properly initialized")
+		return ctrl.Result{}, err
+	}
+
 	if r.isMarkedForDeletion(groupObj) {
-		return r.reconcileDelete(ctx, groupObj)
+		return r.reconcileDelete(ctx, keycloakClient, groupObj)
 	}
 
 	if err := r.ensureFinalizer(ctx, groupObj); err != nil {
@@ -95,12 +102,30 @@ func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return r.updateStatus(ctx, groupObj, *result)
 	}
 
-	return r.reconcileGroup(ctx, groupObj, realm)
+	return r.reconcileGroup(ctx, keycloakClient, groupObj, realm)
+}
+
+func (r *GroupReconciler) getKeycloakClient(ctx context.Context, group *keycloakv1alpha1.Group) (*keycloak.KeycloakClient, error) {
+	configName := group.Spec.InstanceConfigRef.Name
+	configNamespace := group.Namespace
+	if group.Spec.InstanceConfigRef.Namespace != "" {
+		configNamespace = group.Spec.InstanceConfigRef.Namespace
+	}
+
+	var config keycloakv1alpha1.KeycloakInstanceConfig
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      configName,
+		Namespace: configNamespace,
+	}, &config); err != nil {
+		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
+	}
+
+	return r.ClientManager.GetOrCreateClient(ctx, &config)
 }
 
 // validateReconciler ensures the controller is properly initialized
-func (r *GroupReconciler) validateReconciler() error {
-	if r.KeycloakClient == nil {
+func (r *GroupReconciler) validateReconciler(keycloakClient *keycloak.KeycloakClient) error {
+	if keycloakClient == nil {
 		return fmt.Errorf("KeycloakClient is nil - controller not properly initialized")
 	}
 	return nil
@@ -225,11 +250,11 @@ func (r *GroupReconciler) isCrossNamespaceReference(groupObj *keycloakv1alpha1.G
 }
 
 // reconcileGroup handles the main group reconciliation logic
-func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
+func (r *GroupReconciler) reconcileGroup(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Handle parent group resolution first if needed
-	if err := r.resolveParentGroup(ctx, groupObj, realm); err != nil {
+	if err := r.resolveParentGroup(ctx, keycloakClient, groupObj, realm); err != nil {
 		logger.Error(err, "Failed to resolve parent group")
 		result := GroupReconcileResult{
 			Ready:      false,
@@ -239,7 +264,7 @@ func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloak
 		return r.updateStatus(ctx, groupObj, result)
 	}
 
-	keycloakGroup, err := r.getOrCreateGroup(ctx, groupObj, realm)
+	keycloakGroup, err := r.getOrCreateGroup(ctx, keycloakClient, groupObj, realm)
 	if err != nil {
 		result := GroupReconcileResult{
 			Ready:      false,
@@ -252,7 +277,7 @@ func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloak
 	groupChanged := keycloakGroup == nil // If nil, it means we created
 	if keycloakGroup != nil {
 		var updateErr error
-		groupChanged, updateErr = r.updateGroupIfNeeded(ctx, groupObj, keycloakGroup, realm)
+		groupChanged, updateErr = r.updateGroupIfNeeded(ctx, keycloakClient, groupObj, keycloakGroup, realm)
 		if updateErr != nil {
 			logger.Error(updateErr, "Failed to update group")
 			result := GroupReconcileResult{
@@ -274,7 +299,7 @@ func (r *GroupReconciler) reconcileGroup(ctx context.Context, groupObj *keycloak
 }
 
 // resolveParentGroup resolves the parent group ID if a parent is specified
-func (r *GroupReconciler) resolveParentGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
+func (r *GroupReconciler) resolveParentGroup(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 
 	if groupObj.Spec.ParentGroupRef == nil || groupObj.Spec.ParentGroupRef.Name == "" {
@@ -288,7 +313,7 @@ func (r *GroupReconciler) resolveParentGroup(ctx context.Context, groupObj *keyc
 
 	// Check if we already have the parent UUID and it's still valid
 	if groupObj.Status.ParentGroupUUID != "" {
-		if _, err := r.KeycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.ParentGroupUUID); err == nil {
+		if _, err := keycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.ParentGroupUUID); err == nil {
 			logger.V(1).Info("Parent group UUID still valid", "parentUUID", groupObj.Status.ParentGroupUUID)
 			return nil // Parent still exists
 		}
@@ -339,7 +364,7 @@ func (r *GroupReconciler) resolveParentGroup(ctx context.Context, groupObj *keyc
 	}
 
 	// Verify the parent group exists in Keycloak
-	_, err := r.KeycloakClient.GetGroup(ctx, realm.Name, parentGroupObj.Status.GroupUUID)
+	_, err := keycloakClient.GetGroup(ctx, realm.Name, parentGroupObj.Status.GroupUUID)
 	if err != nil {
 		if keycloak.ErrorIs404(err) {
 			return fmt.Errorf("parent group '%s' not found in Keycloak (UUID: %s)",
@@ -412,9 +437,9 @@ func (r *GroupReconciler) validateParentGroupHierarchy(ctx context.Context, grou
 }
 
 // getOrCreateGroup retrieves an existing group or creates a new one
-func (r *GroupReconciler) getOrCreateGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (*keycloak.Group, error) {
+func (r *GroupReconciler) getOrCreateGroup(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (*keycloak.Group, error) {
 	if groupObj.Status.GroupUUID != "" {
-		group, err := r.fetchExistingGroup(ctx, groupObj, realm)
+		group, err := r.fetchExistingGroup(ctx, keycloakClient, groupObj, realm)
 		if err != nil {
 			return nil, err
 		}
@@ -423,15 +448,15 @@ func (r *GroupReconciler) getOrCreateGroup(ctx context.Context, groupObj *keyclo
 		}
 	}
 
-	return nil, r.createNewGroup(ctx, groupObj, realm)
+	return nil, r.createNewGroup(ctx, keycloakClient, groupObj, realm)
 }
 
 // fetchExistingGroup retrieves an existing group by UUID
-func (r *GroupReconciler) fetchExistingGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (*keycloak.Group, error) {
+func (r *GroupReconciler) fetchExistingGroup(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) (*keycloak.Group, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("Fetching group by UUID", "uuid", groupObj.Status.GroupUUID)
 
-	group, err := r.KeycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.GroupUUID)
+	group, err := keycloakClient.GetGroup(ctx, realm.Name, groupObj.Status.GroupUUID)
 	if err != nil {
 		if keycloak.ErrorIs404(err) {
 			logger.Info("Group UUID not found in Keycloak, will recreate")
@@ -451,20 +476,20 @@ func (r *GroupReconciler) clearGroupState(groupObj *keycloakv1alpha1.Group) {
 }
 
 // createNewGroup creates a new group in Keycloak
-func (r *GroupReconciler) createNewGroup(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
+func (r *GroupReconciler) createNewGroup(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Creating group in Keycloak")
 
 	newGroup := r.buildGroupFromSpec(groupObj, realm)
 
-	if err := r.KeycloakClient.NewGroup(ctx, newGroup); err != nil {
+	if err := keycloakClient.NewGroup(ctx, newGroup); err != nil {
 		if keycloak.ErrorIs409(err) {
 			return fmt.Errorf("group exists in Keycloak but UUID not tracked - manual intervention required")
 		}
 		return fmt.Errorf("failed to create group: %w", err)
 	}
 
-	return r.storeGroupUUID(ctx, groupObj, realm)
+	return r.storeGroupUUID(ctx, keycloakClient, groupObj, realm)
 }
 
 // buildGroupFromSpec creates a new Group from the spec
@@ -480,9 +505,9 @@ func (r *GroupReconciler) buildGroupFromSpec(groupObj *keycloakv1alpha1.Group, r
 }
 
 // storeGroupUUID fetches and stores the UUID of the created group
-func (r *GroupReconciler) storeGroupUUID(ctx context.Context, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
+func (r *GroupReconciler) storeGroupUUID(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, realm *keycloakv1alpha1.Realm) error {
 	logger := log.FromContext(ctx)
-	createdGroup, err := r.KeycloakClient.GetGroupByName(ctx, realm.Name, groupObj.Spec.Name)
+	createdGroup, err := keycloakClient.GetGroupByName(ctx, realm.Name, groupObj.Spec.Name)
 	if err != nil {
 		return fmt.Errorf("group created but failed to retrieve UUID: %w", err)
 	}
@@ -493,7 +518,7 @@ func (r *GroupReconciler) storeGroupUUID(ctx context.Context, groupObj *keycloak
 }
 
 // updateGroupIfNeeded checks for differences and updates the group if needed
-func (r *GroupReconciler) updateGroupIfNeeded(ctx context.Context, groupObj *keycloakv1alpha1.Group, keycloakGroup *keycloak.Group, realm *keycloakv1alpha1.Realm) (bool, error) {
+func (r *GroupReconciler) updateGroupIfNeeded(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group, keycloakGroup *keycloak.Group, realm *keycloakv1alpha1.Realm) (bool, error) {
 	logger := log.FromContext(ctx)
 	diffs := r.getGroupDiffs(groupObj, keycloakGroup)
 	if len(diffs) == 0 {
@@ -503,7 +528,7 @@ func (r *GroupReconciler) updateGroupIfNeeded(ctx context.Context, groupObj *key
 	logger.Info("Group configuration changes detected", "changes", strings.Join(diffs, ", "))
 
 	updatedGroup := r.applyChangesToGroup(groupObj, keycloakGroup, realm)
-	if err := r.KeycloakClient.UpdateGroup(ctx, updatedGroup); err != nil {
+	if err := keycloakClient.UpdateGroup(ctx, updatedGroup); err != nil {
 		return false, fmt.Errorf("failed to update group: %w", err)
 	}
 
@@ -590,12 +615,12 @@ func (r *GroupReconciler) getSuccessMessage(groupChanged bool) string {
 }
 
 // reconcileDelete handles group deletion
-func (r *GroupReconciler) reconcileDelete(ctx context.Context, groupObj *keycloakv1alpha1.Group) (ctrl.Result, error) {
+func (r *GroupReconciler) reconcileDelete(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(groupObj, groupFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.deleteGroupFromKeycloak(ctx, groupObj); err != nil {
+	if err := r.deleteGroupFromKeycloak(ctx, keycloakClient, groupObj); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -604,7 +629,7 @@ func (r *GroupReconciler) reconcileDelete(ctx context.Context, groupObj *keycloa
 }
 
 // deleteGroupFromKeycloak handles the actual deletion from Keycloak
-func (r *GroupReconciler) deleteGroupFromKeycloak(ctx context.Context, groupObj *keycloakv1alpha1.Group) error {
+func (r *GroupReconciler) deleteGroupFromKeycloak(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group) error {
 	logger := log.FromContext(ctx)
 	if groupObj.Status.GroupUUID == "" {
 		logger.Info("No UUID stored - skipping Keycloak deletion")
@@ -624,7 +649,7 @@ func (r *GroupReconciler) deleteGroupFromKeycloak(ctx context.Context, groupObj 
 
 	logger.Info("Deleting group from Keycloak", "uuid", groupObj.Status.GroupUUID)
 
-	if err := r.KeycloakClient.DeleteGroup(ctx, realm.Name, groupObj.Status.GroupUUID); err != nil {
+	if err := keycloakClient.DeleteGroup(ctx, realm.Name, groupObj.Status.GroupUUID); err != nil {
 		if keycloak.ErrorIs404(err) {
 			logger.Info("Group already deleted from Keycloak")
 			return nil

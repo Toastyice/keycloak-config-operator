@@ -73,7 +73,7 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Phase 1: Check if URL is reachable
-	urlReachable, connectMessage := r.checkURLReachability(ctx, &config)
+	urlReachable, connectMessage := r.checkURLReachability(&config)
 
 	if !urlReachable {
 		// If not connected, Ready is implicitly false
@@ -101,7 +101,7 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 	return r.updateStatus(ctx, &config, true, true, "Keycloak URL is reachable", successMessage, serverInfo)
 }
 
-func (r *KeycloakInstanceConfigReconciler) checkURLReachability(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig) (bool, string) {
+func (r *KeycloakInstanceConfigReconciler) checkURLReachability(config *keycloakv1alpha1.KeycloakInstanceConfig) (bool, string) {
 	// Create a simple HTTP client with timeout
 	client := &http.Client{
 		Timeout: time.Duration(config.Spec.Timeout) * time.Second,

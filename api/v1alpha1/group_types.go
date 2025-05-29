@@ -5,6 +5,10 @@ import (
 )
 
 type GroupSpec struct {
+	// Reference to the KeycloakInstanceConfig
+	// +kubebuilder:validation:Required
+	InstanceConfigRef InstanceConfigReference `json:"instanceConfigRef"`
+
 	// RealmRef specifies which realm this group belongs to
 	// +kubebuilder:validation:Required
 	RealmRef RealmReference `json:"realmRef"`

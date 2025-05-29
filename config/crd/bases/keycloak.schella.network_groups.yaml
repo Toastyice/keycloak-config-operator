@@ -77,6 +77,19 @@ spec:
                 description: ClientRoles maps client names to lists of roles assigned
                   to this group for those clients
                 type: object
+              instanceConfigRef:
+                description: Reference to the KeycloakInstanceConfig
+                properties:
+                  name:
+                    description: Name of the KeycloakInstanceConfig
+                    type: string
+                  namespace:
+                    description: Namespace of the KeycloakInstanceConfig. If empty,
+                      uses the same namespace as the resource.
+                    type: string
+                required:
+                - name
+                type: object
               name:
                 description: Name is the name of the group
                 maxLength: 255
@@ -121,6 +134,7 @@ spec:
                   type: string
                 type: array
             required:
+            - instanceConfigRef
             - name
             - realmRef
             type: object
