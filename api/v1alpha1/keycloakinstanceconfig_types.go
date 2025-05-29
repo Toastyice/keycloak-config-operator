@@ -70,10 +70,19 @@ type KeycloakInstanceConfigStatus struct {
 	// LastConnected represents the last time a successful connection was made
 	// +optional
 	LastConnected *metav1.Time `json:"lastConnected,omitempty"`
+
+	// ServerVersion represents the version of the connected Keycloak server
+	// +optional
+	ServerVersion string `json:"serverVersion,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:printcolumn:name="Connected",type="string",JSONPath=".status.conditions[?(@.type==\"Connected\")].status"
+// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".status.serverVersion"
+// +kubebuilder:printcolumn:name="Last Connected",type="date",JSONPath=".status.lastConnected"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // KeycloakInstanceConfig is the Schema for the keycloakinstanceconfigs API
 type KeycloakInstanceConfig struct {

@@ -14,7 +14,20 @@ spec:
     singular: keycloakinstanceconfig
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Connected")].status
+      name: Connected
+      type: string
+    - jsonPath: .status.serverVersion
+      name: Version
+      type: string
+    - jsonPath: .status.lastConnected
+      name: Last Connected
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: KeycloakInstanceConfig is the Schema for the keycloakinstanceconfigs
@@ -182,6 +195,10 @@ spec:
                 description: LastConnected represents the last time a successful connection
                   was made
                 format: date-time
+                type: string
+              serverVersion:
+                description: ServerVersion represents the version of the connected
+                  Keycloak server
                 type: string
             type: object
         type: object
