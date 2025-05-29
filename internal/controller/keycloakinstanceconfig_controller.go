@@ -97,7 +97,7 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// All checks passed - both Connected and Ready are true
-	successMessage := fmt.Sprintf("Successfully authenticated and retrieved server info")
+	successMessage := "Successfully authenticated and retrieved server info"
 	return r.updateStatus(ctx, &config, true, true, "Keycloak URL is reachable", successMessage, serverInfo)
 }
 
