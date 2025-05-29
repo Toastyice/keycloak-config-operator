@@ -150,30 +150,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.RealmReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		ClientManager: clientManager,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Realm")
-		os.Exit(1)
-	}
-	//if err = (&controller.ClientReconciler{
-	//	Client:         mgr.GetClient(),
-	//	Scheme:         mgr.GetScheme(),
-	//	KeycloakClient: keycloakClient,
-	//}).SetupWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create controller", "controller", "Client")
-	//	os.Exit(1)
-	//}
-	//if err = (&controller.GroupReconciler{
-	//	Client:         mgr.GetClient(),
-	//	Scheme:         mgr.GetScheme(),
-	//	KeycloakClient: keycloakClient,
-	//}).SetupWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create controller", "controller", "Group")
-	//	os.Exit(1)
-	//}
 	if err = (&controller.KeycloakInstanceConfigReconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
@@ -182,6 +158,30 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "KeycloakInstanceConfig")
 		os.Exit(1)
 	}
+	if err = (&controller.RealmReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		ClientManager: clientManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Realm")
+		os.Exit(1)
+	}
+	if err = (&controller.ClientReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		ClientManager: clientManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Client")
+		os.Exit(1)
+	}
+	//if err = (&controller.GroupReconciler{
+	//	Client:         mgr.GetClient(),
+	//	Scheme:         mgr.GetScheme(),
+	//	KeycloakClient: keycloakClient,
+	//}).SetupWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create controller", "controller", "Group")
+	//	os.Exit(1)
+	//}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

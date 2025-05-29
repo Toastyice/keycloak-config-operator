@@ -163,6 +163,19 @@ spec:
                   or OAuth2 specifications, this enables support of 'Implicit Flow'
                   for this client.
                 type: boolean
+              instanceConfigRef:
+                description: Reference to the KeycloakInstanceConfig
+                properties:
+                  name:
+                    description: Name of the KeycloakInstanceConfig
+                    type: string
+                  namespace:
+                    description: Namespace of the KeycloakInstanceConfig. If empty,
+                      uses the same namespace as the resource.
+                    type: string
+                required:
+                - name
+                type: object
               loginTheme:
                 description: The theme must exist in Keycloak. Select theme for login,
                   OTP, grant, registration and forgot password pages.
@@ -256,6 +269,7 @@ spec:
                 type: array
             required:
             - clientId
+            - instanceConfigRef
             - realmRef
             type: object
             x-kubernetes-validations:
