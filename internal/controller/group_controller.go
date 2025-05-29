@@ -1,5 +1,5 @@
-//TODO
-//Doesn't fix parent if manually moved in Keycloak ui
+// TODO
+// Doesn't fix parent if manually moved in Keycloak ui
 package controller
 
 import (

@@ -104,7 +104,7 @@ func main() {
 	initCtx := context.Background() //TODO use short lived context?
 	keycloakClient, err := keycloak.NewKeycloakClient(
 		initCtx,
-		"http://localhost:8080",
+		"http://host.docker.internal:8080", //"http://localhost:8080",
 		"/auth",
 		"admin-cli",
 		"", // can be empty if client is public
@@ -165,7 +165,7 @@ func main() {
 		// the manager stops, so would be fine to enable this option. However,
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
