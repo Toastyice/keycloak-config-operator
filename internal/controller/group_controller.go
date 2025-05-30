@@ -73,12 +73,17 @@ func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		keycloakClient, err := r.getKeycloakClient(ctx, &group)
 		if err != nil {
 			if strings.Contains(err.Error(), "is not ready") {
-				log.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "group", group.Name)
-				if controllerutil.ContainsFinalizer(&group, groupFinalizer) {
-					controllerutil.RemoveFinalizer(&group, groupFinalizer)
-					return ctrl.Result{}, r.Update(ctx, &group)
+				log.Info("KeycloakInstanceConfig not ready during deletion, waiting...", "group", group.Name)
+
+				result := GroupReconcileResult{
+					Ready:      false,
+					RealmReady: false,
+					Message:    "Deletion pending: waiting for KeycloakInstanceConfig to become ready",
 				}
-				return ctrl.Result{}, nil
+				r.updateStatus(ctx, &group, result) // Ignore error during deletion
+
+				// Keep the finalizer and requeue until KeycloakInstanceConfig is ready
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
 		}

@@ -51,12 +51,12 @@ func (r *RealmReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		keycloakClient, err := r.getKeycloakClient(ctx, &realm)
 		if err != nil {
 			if strings.Contains(err.Error(), "is not ready") {
-				log.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "realm", realm.Name)
-				if controllerutil.ContainsFinalizer(&realm, realmFinalizer) {
-					controllerutil.RemoveFinalizer(&realm, realmFinalizer)
-					return ctrl.Result{}, r.Update(ctx, &realm)
-				}
-				return ctrl.Result{}, nil
+				log.Info("KeycloakInstanceConfig not ready during deletion, waiting...", "realm", realm.Name)
+
+				r.updateStatus(ctx, &realm, false, "Deletion pending: waiting for KeycloakInstanceConfig to become ready") // Ignore error during deletion
+
+				// Keep the finalizer and requeue until KeycloakInstanceConfig is ready
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
 		}
