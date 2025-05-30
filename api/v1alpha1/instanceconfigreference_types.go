@@ -1,3 +1,7 @@
+// Copyright 2025 toastyice
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package v1alpha1
 
 type InstanceConfigReference struct {
