@@ -60,17 +60,21 @@ func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// Handle deletion first
 	if r.isMarkedForDeletion(clientObj) {
 		keycloakClient, err := r.getKeycloakClient(ctx, clientObj)
 		if err != nil {
 			if strings.Contains(err.Error(), "is not ready") {
-				logger.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "client", clientObj.Name)
-				if controllerutil.ContainsFinalizer(clientObj, clientFinalizer) {
-					controllerutil.RemoveFinalizer(clientObj, clientFinalizer)
-					return ctrl.Result{}, r.Update(ctx, clientObj)
+				logger.Info("KeycloakInstanceConfig not ready during deletion, waiting...", "client", clientObj.Name)
+
+				// Optionally update status to indicate pending deletion
+				result := ReconcileResult{
+					Ready:      false,
+					RealmReady: false,
+					Message:    "Deletion pending: waiting for KeycloakInstanceConfig to become ready",
 				}
-				return ctrl.Result{}, nil
+				r.updateStatus(ctx, clientObj, result) // Ignore error during deletion
+
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
 		}
