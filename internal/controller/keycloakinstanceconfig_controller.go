@@ -18,7 +18,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
-	"github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
@@ -240,16 +239,16 @@ func convertKeycloakThemeToV1alpha1Theme(themes map[string][]keycloak.Theme) map
 		return nil
 	}
 
-	result := make(map[string][]v1alpha1.Theme, len(themes))
+	result := make(map[string][]keycloakv1alpha1.Theme, len(themes))
 	for themeType, themeList := range themes {
 		if len(themeList) == 0 {
 			result[themeType] = nil
 			continue
 		}
 
-		converted := make([]v1alpha1.Theme, 0, len(themeList))
+		converted := make([]keycloakv1alpha1.Theme, 0, len(themeList))
 		for _, theme := range themeList {
-			converted = append(converted, v1alpha1.Theme{
+			converted = append(converted, keycloakv1alpha1.Theme{
 				Name:    theme.Name,
 				Locales: theme.Locales,
 			})
