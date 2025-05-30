@@ -61,6 +61,12 @@ spec:
                 description: A map of custom HTTP headers to add to each request to
                   the Keycloak API.
                 type: object
+              adminUrl:
+                description: The admin URL of the Keycloak instance, before /auth/admin
+                type: string
+                x-kubernetes-validations:
+                - message: adminUrl must be a valid HTTP or HTTPS URL
+                  rule: size(self) == 0 || self.matches('^https?://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?(/.*)?$')
               basePath:
                 description: The base path used for accessing the Keycloak REST API.
                   Defaults to an empty string. Note that users of the legacy distribution
@@ -99,6 +105,10 @@ spec:
                 maxLength: 255
                 minLength: 1
                 type: string
+              redHatSso:
+                default: false
+                description: Indicates if Keycloak is Red Hat Single Sign-On distribution
+                type: boolean
               timeout:
                 default: 15
                 description: Sets the timeout of the client when addressing Keycloak,

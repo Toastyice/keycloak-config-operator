@@ -144,9 +144,14 @@ func (cm *ClientManager) ListClientKeys() []string {
 }
 
 func (cm *ClientManager) createKeycloakClient(ctx context.Context, spec *keycloakv1alpha1.KeycloakInstanceConfigSpec) (*keycloak.KeycloakClient, error) {
+	// Use AdminUrl if provided, otherwise fall back to Url
+	keycloakUrl := spec.Url
+	if spec.AdminUrl != "" {
+		keycloakUrl = spec.AdminUrl
+	}
 	return keycloak.NewKeycloakClient(
 		ctx,
-		spec.Url,
+		keycloakUrl,
 		spec.BasePath,
 		spec.ClientId,
 		spec.ClientSecret,
@@ -158,7 +163,7 @@ func (cm *ClientManager) createKeycloakClient(ctx context.Context, spec *keycloa
 		spec.CaCert,
 		spec.TlsInsecureSkipVerify,
 		"keycloak-config-operator/v1alpha1",
-		false, // Red Hat SSO
+		spec.RedHatSso,
 		spec.AdditionalHeaders,
 	)
 }

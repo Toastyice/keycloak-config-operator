@@ -103,8 +103,13 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 }
 
 func (r *KeycloakInstanceConfigReconciler) checkURLReachability(config *keycloakv1alpha1.KeycloakInstanceConfig) (bool, string) {
-	// Validate that URL is provided
-	if config.Spec.Url == "" {
+	// Use AdminUrl if provided, otherwise fall back to Url
+	keycloakUrl := config.Spec.Url
+	if config.Spec.AdminUrl != "" {
+		keycloakUrl = config.Spec.AdminUrl
+	}
+
+	if keycloakUrl == "" {
 		return false, "URL is not specified in the configuration"
 	}
 
@@ -137,18 +142,18 @@ func (r *KeycloakInstanceConfigReconciler) checkURLReachability(config *keycloak
 	}
 
 	// Attempt to reach the URL
-	resp, err := client.Get(config.Spec.Url)
+	resp, err := client.Get(keycloakUrl)
 	if err != nil {
-		return false, fmt.Sprintf("failed to reach URL %s: %v", config.Spec.Url, err)
+		return false, fmt.Sprintf("failed to reach URL %s: %v", keycloakUrl, err)
 	}
 	defer resp.Body.Close()
 
 	// Check if the response status indicates success
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-		return true, fmt.Sprintf("URL %s is reachable (status: %d)", config.Spec.Url, resp.StatusCode)
+		return true, fmt.Sprintf("URL %s is reachable (status: %d)", keycloakUrl, resp.StatusCode)
 	}
 
-	return false, fmt.Sprintf("URL %s returned non-success status: %d", config.Spec.Url, resp.StatusCode)
+	return false, fmt.Sprintf("URL %s returned non-success status: %d", keycloakUrl, resp.StatusCode)
 }
 
 func (r *KeycloakInstanceConfigReconciler) updateStatus(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig, connected, ready bool, connectMessage, readyMessage string, serverInfo *keycloak.ServerInfo) (ctrl.Result, error) {
@@ -234,7 +239,7 @@ func (r *KeycloakInstanceConfigReconciler) testConnectionWithClient(ctx context.
 	return serverInfo, nil
 }
 
-func convertKeycloakThemeToV1alpha1Theme(themes map[string][]keycloak.Theme) map[string][]v1alpha1.Theme {
+func convertKeycloakThemeToV1alpha1Theme(themes map[string][]keycloak.Theme) map[string][]keycloakv1alpha1.Theme {
 	if themes == nil {
 		return nil
 	}

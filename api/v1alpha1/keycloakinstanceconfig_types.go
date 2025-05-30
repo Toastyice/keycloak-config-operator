@@ -12,6 +12,11 @@ type KeycloakInstanceConfigSpec struct {
 	// +kubebuilder:validation:XValidation:rule=`self.matches('^https?://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?(/.*)?$')`,message="url must be a valid HTTP or HTTPS URL"
 	Url string `json:"url"`
 
+	// The admin URL of the Keycloak instance, before /auth/admin
+	// +optional
+	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.matches('^https?://([a-zA-Z0-9-]+\\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?(/.*)?$')`,message="adminUrl must be a valid HTTP or HTTPS URL"
+	AdminUrl string `json:"adminUrl,omitempty"`
+
 	// The base path used for accessing the Keycloak REST API. Defaults to an empty string. Note that users of the legacy distribution of Keycloak will need to set this attribute to /auth
 	// +optional
 	// +kubebuilder:validation:XValidation:rule=`size(self) == 0 || self.startsWith('/')`,message="basePath must start with /"
@@ -46,6 +51,11 @@ type KeycloakInstanceConfigSpec struct {
 	// +optional
 	// +kubebuilder:default=15
 	Timeout int `json:"timeout"`
+
+	// Indicates if Keycloak is Red Hat Single Sign-On distribution
+	// +optional
+	// +kubebuilder:default=false
+	RedHatSso bool `json:"redHatSso"`
 
 	// Allows ignoring insecure certificates when set to true. Defaults to false. Disabling this security check is dangerous and should only be done in local or test environments!
 	// +optional
