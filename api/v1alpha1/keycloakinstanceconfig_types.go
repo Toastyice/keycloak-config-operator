@@ -74,16 +74,24 @@ type KeycloakInstanceConfigStatus struct {
 	// ServerVersion represents the version of the connected Keycloak server
 	// +optional
 	ServerVersion string `json:"serverVersion,omitempty"`
+
+	// +optional
+	Themes map[string][]Theme `json:"themes,omitempty"`
+}
+
+type Theme struct {
+	Name    string   `json:"name"`
+	Locales []string `json:"locales,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced
-//+kubebuilder:printcolumn:name="Connected",type="string",JSONPath=".status.conditions[?(@.type=='Connected')].status"
-//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-//+kubebuilder:printcolumn:name="Version",type="string",JSONPath=".status.serverVersion"
-//+kubebuilder:printcolumn:name="Last Connected",type="date",JSONPath=".status.lastConnected"
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Connected",type="string",JSONPath=".status.conditions[?(@.type=='Connected')].status"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".status.serverVersion"
+// +kubebuilder:printcolumn:name="Last Connected",type="date",JSONPath=".status.lastConnected"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // KeycloakInstanceConfig is the Schema for the keycloakinstanceconfigs API
 type KeycloakInstanceConfig struct {

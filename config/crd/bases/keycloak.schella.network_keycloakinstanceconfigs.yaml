@@ -203,6 +203,21 @@ spec:
                 description: ServerVersion represents the version of the connected
                   Keycloak server
                 type: string
+              themes:
+                additionalProperties:
+                  items:
+                    properties:
+                      locales:
+                        items:
+                          type: string
+                        type: array
+                      name:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
+                type: object
             type: object
         type: object
     served: true

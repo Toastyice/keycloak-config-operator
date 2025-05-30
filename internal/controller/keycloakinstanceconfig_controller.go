@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/keycloak/terraform-provider-keycloak/keycloak"
+	"github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 )
@@ -188,6 +189,7 @@ func (r *KeycloakInstanceConfigReconciler) updateStatus(ctx context.Context, con
 
 		if serverInfo != nil {
 			config.Status.ServerVersion = serverInfo.SystemInfo.ServerVersion
+			config.Status.Themes = convertKeycloakThemeToV1alpha1Theme(serverInfo.Themes)
 		}
 	} else {
 		var reason string
@@ -231,6 +233,30 @@ func (r *KeycloakInstanceConfigReconciler) testConnectionWithClient(ctx context.
 		return nil, fmt.Errorf("failed to connect to Keycloak server: %w", err)
 	}
 	return serverInfo, nil
+}
+
+func convertKeycloakThemeToV1alpha1Theme(themes map[string][]keycloak.Theme) map[string][]v1alpha1.Theme {
+	if themes == nil {
+		return nil
+	}
+
+	result := make(map[string][]v1alpha1.Theme, len(themes))
+	for themeType, themeList := range themes {
+		if len(themeList) == 0 {
+			result[themeType] = nil
+			continue
+		}
+
+		converted := make([]v1alpha1.Theme, 0, len(themeList))
+		for _, theme := range themeList {
+			converted = append(converted, v1alpha1.Theme{
+				Name:    theme.Name,
+				Locales: theme.Locales,
+			})
+		}
+		result[themeType] = converted
+	}
+	return result
 }
 
 // SetupWithManager sets up the controller with the Manager.
