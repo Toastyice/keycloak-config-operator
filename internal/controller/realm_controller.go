@@ -37,26 +37,43 @@ type RealmReconciler struct {
 func (r *RealmReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Fetch the Realm instance
 	var realm keycloakv1alpha1.Realm
 	if err := r.Get(ctx, req.NamespacedName, &realm); err != nil {
 		if errors.IsNotFound(err) {
-			// Object not found, could have been deleted after reconcile request
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "unable to fetch Realm")
 		return ctrl.Result{}, err
 	}
 
-	// Get the KeycloakInstanceConfig
-	keycloakClient, err := r.getKeycloakClient(ctx, &realm)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+	// Handle deletion
+	if !realm.ObjectMeta.DeletionTimestamp.IsZero() {
+		keycloakClient, err := r.getKeycloakClient(ctx, &realm)
+		if err != nil {
+			if strings.Contains(err.Error(), "is not ready") {
+				log.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "realm", realm.Name)
+				if controllerutil.ContainsFinalizer(&realm, realmFinalizer) {
+					controllerutil.RemoveFinalizer(&realm, realmFinalizer)
+					return ctrl.Result{}, r.Update(ctx, &realm)
+				}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
+		}
+		return r.reconcileDelete(ctx, keycloakClient, &realm)
 	}
 
-	// Check if the realm is being deleted
-	if !realm.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, keycloakClient, &realm)
+	// Check if KeycloakInstanceConfig is ready
+	keycloakClient, err := r.getKeycloakClient(ctx, &realm)
+	if err != nil {
+		if strings.Contains(err.Error(), "is not ready") {
+			// Don't update status, just log and requeue
+			log.Info("KeycloakInstanceConfig is not ready, requeuing", "realm", realm.Name)
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Error(err, "failed to get Keycloak client")
+		// For actual errors (not dependency issues), update status
+		return r.updateStatus(ctx, &realm, false, fmt.Sprintf("Failed to get Keycloak client: %v", err))
 	}
 
 	// Add finalizer if it doesn't exist
@@ -87,7 +104,21 @@ func (r *RealmReconciler) getKeycloakClient(ctx context.Context, realm *keycloak
 		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
 	}
 
+	// Check if the KeycloakInstanceConfig is ready
+	if !r.isKeycloakInstanceConfigReady(&config) {
+		return nil, fmt.Errorf("KeycloakInstanceConfig %s/%s is not ready", configNamespace, configName)
+	}
+
 	return r.ClientManager.GetOrCreateClient(ctx, &config)
+}
+
+func (r *RealmReconciler) isKeycloakInstanceConfigReady(config *keycloakv1alpha1.KeycloakInstanceConfig) bool {
+	for _, condition := range config.Status.Conditions {
+		if condition.Type == "Ready" {
+			return condition.Status == "True"
+		}
+	}
+	return false
 }
 
 // getDiffs compares realm specifications and returns a list of differences

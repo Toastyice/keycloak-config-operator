@@ -21,18 +21,9 @@ spec:
     - jsonPath: .spec.realmRef.name
       name: Realm
       type: string
-    - jsonPath: .status.computedPath
-      name: Path
-      type: string
-    - jsonPath: .spec.enabled
-      name: Enabled
-      type: boolean
     - jsonPath: .status.ready
       name: Ready
       type: boolean
-    - jsonPath: .status.memberCount
-      name: Members
-      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date

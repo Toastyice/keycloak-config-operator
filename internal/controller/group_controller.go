@@ -57,54 +57,82 @@ type GroupFieldDiff struct {
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=realms,verbs=get;list;watch
 
 func (r *GroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues("group", req.NamespacedName)
+	log := log.FromContext(ctx)
 
-	groupObj, err := r.fetchGroup(ctx, req.NamespacedName)
-	if err != nil {
+	var group keycloakv1alpha1.Group
+	if err := r.Get(ctx, req.NamespacedName, &group); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Unable to fetch Group")
+		log.Error(err, "unable to fetch Group")
 		return ctrl.Result{}, err
 	}
 
-	// Get the KeycloakInstanceConfig
-	keycloakClient, err := r.getKeycloakClient(ctx, groupObj)
+	// Handle deletion
+	if !group.ObjectMeta.DeletionTimestamp.IsZero() {
+		keycloakClient, err := r.getKeycloakClient(ctx, &group)
+		if err != nil {
+			if strings.Contains(err.Error(), "is not ready") {
+				log.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "group", group.Name)
+				if controllerutil.ContainsFinalizer(&group, groupFinalizer) {
+					controllerutil.RemoveFinalizer(&group, groupFinalizer)
+					return ctrl.Result{}, r.Update(ctx, &group)
+				}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
+		}
+		return r.reconcileDelete(ctx, keycloakClient, &group)
+	}
+
+	// Check if KeycloakInstanceConfig is ready
+	keycloakClient, err := r.getKeycloakClient(ctx, &group)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+		if strings.Contains(err.Error(), "is not ready") {
+			// Don't update status, just log and requeue
+			log.Info("KeycloakInstanceConfig is not ready, requeuing", "group", group.Name)
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Error(err, "failed to get Keycloak client")
+		// For actual errors (not dependency issues), update status
+		result := GroupReconcileResult{
+			Ready:      false,
+			RealmReady: false,
+			Message:    fmt.Sprintf("Failed to get Keycloak client: %v", err),
+		}
+		return r.updateStatus(ctx, &group, result)
 	}
 
-	if err := r.validateReconciler(keycloakClient); err != nil {
-		logger.Error(err, "Controller not properly initialized")
-		return ctrl.Result{}, err
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(&group, groupFinalizer) {
+		controllerutil.AddFinalizer(&group, groupFinalizer)
+		if err := r.Update(ctx, &group); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
-	if r.isMarkedForDeletion(groupObj) {
-		return r.reconcileDelete(ctx, keycloakClient, groupObj)
-	}
-
-	if err := r.ensureFinalizer(ctx, groupObj); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	realm, result := r.validateRealm(ctx, groupObj)
+	// Validate realm is ready
+	realm, result := r.validateRealm(ctx, &group)
 	if result != nil {
-		return r.updateStatus(ctx, groupObj, *result)
+		return r.updateStatus(ctx, &group, *result)
 	}
 
-	if err := r.setOwnerReference(ctx, groupObj, realm); err != nil {
-		logger.Error(err, "Failed to set owner reference")
+	// Set owner reference
+	if err := r.setOwnerReference(ctx, &group, realm); err != nil {
+		log.Error(err, "Failed to set owner reference")
 		result := &GroupReconcileResult{
 			Ready:      false,
 			RealmReady: true,
 			Message:    fmt.Sprintf("Failed to set owner reference: %v", err),
 		}
-		return r.updateStatus(ctx, groupObj, *result)
+		return r.updateStatus(ctx, &group, *result)
 	}
 
-	return r.reconcileGroup(ctx, keycloakClient, groupObj, realm)
+	// Reconcile the group
+	return r.reconcileGroup(ctx, keycloakClient, &group, realm)
 }
 
+// getKeycloakClient with improved error handling and requeue logic
 func (r *GroupReconciler) getKeycloakClient(ctx context.Context, group *keycloakv1alpha1.Group) (*keycloak.KeycloakClient, error) {
 	configName := group.Spec.InstanceConfigRef.Name
 	configNamespace := group.Namespace
@@ -120,7 +148,21 @@ func (r *GroupReconciler) getKeycloakClient(ctx context.Context, group *keycloak
 		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
 	}
 
+	// Check if KeycloakInstanceConfig is ready
+	if !r.isKeycloakInstanceConfigReady(&config) {
+		return nil, fmt.Errorf("KeycloakInstanceConfig %s/%s is not ready", configNamespace, configName)
+	}
+
 	return r.ClientManager.GetOrCreateClient(ctx, &config)
+}
+
+func (r *GroupReconciler) isKeycloakInstanceConfigReady(config *keycloakv1alpha1.KeycloakInstanceConfig) bool {
+	for _, condition := range config.Status.Conditions {
+		if condition.Type == "Ready" {
+			return condition.Status == "True"
+		}
+	}
+	return false
 }
 
 // validateReconciler ensures the controller is properly initialized
@@ -154,7 +196,7 @@ func (r *GroupReconciler) ensureFinalizer(ctx context.Context, groupObj *keycloa
 	return nil
 }
 
-// validateRealm validates and retrieves the referenced realm
+// validateRealm with requeue logic
 func (r *GroupReconciler) validateRealm(ctx context.Context, groupObj *keycloakv1alpha1.Group) (*keycloakv1alpha1.Realm, *GroupReconcileResult) {
 	realm, err := r.getRealm(ctx, groupObj)
 	if err != nil {
@@ -615,17 +657,60 @@ func (r *GroupReconciler) getSuccessMessage(groupChanged bool) string {
 }
 
 // reconcileDelete handles group deletion
-func (r *GroupReconciler) reconcileDelete(ctx context.Context, keycloakClient *keycloak.KeycloakClient, groupObj *keycloakv1alpha1.Group) (ctrl.Result, error) {
+func (r *GroupReconciler) reconcileDelete(ctx context.Context, keycloakClient *keycloak.KeycloakClient, group *keycloakv1alpha1.Group) (ctrl.Result, error) {
+	log := log.FromContext(ctx).WithValues("group", group.Name)
+
+	// Delete group from Keycloak if it exists
+	if group.Status.GroupUUID != "" {
+		if err := r.deleteGroupFromKeycloak(ctx, keycloakClient, group); err != nil {
+			log.Error(err, "Failed to delete group from Keycloak")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+	}
+
+	// Remove finalizer
+	if controllerutil.ContainsFinalizer(group, groupFinalizer) {
+		controllerutil.RemoveFinalizer(group, groupFinalizer)
+		if err := r.Update(ctx, group); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	log.Info("Group deletion completed successfully")
+	return ctrl.Result{}, nil
+}
+
+// reconcileDeleteWithRequeue handles group deletion with proper requeue logic
+func (r *GroupReconciler) reconcileDeleteWithRequeue(ctx context.Context, groupObj *keycloakv1alpha1.Group) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("group", groupObj.Name)
+
 	if !controllerutil.ContainsFinalizer(groupObj, groupFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.deleteGroupFromKeycloak(ctx, keycloakClient, groupObj); err != nil {
-		return ctrl.Result{}, err
+	// Try to get Keycloak client for deletion
+	keycloakClient, err := r.getKeycloakClient(ctx, groupObj)
+	if err != nil {
+		logger.Info("Cannot get Keycloak client for deletion, will retry", "error", err)
+		// Requeue deletion attempt - Keycloak might become available
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
+	// Attempt deletion from Keycloak
+	if err := r.deleteGroupFromKeycloak(ctx, keycloakClient, groupObj); err != nil {
+		logger.Error(err, "Failed to delete group from Keycloak, will retry")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	// Remove finalizer and complete deletion
 	controllerutil.RemoveFinalizer(groupObj, groupFinalizer)
-	return ctrl.Result{}, r.Update(ctx, groupObj)
+	if err := r.Update(ctx, groupObj); err != nil {
+		logger.Error(err, "Failed to remove finalizer")
+		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+	}
+
+	logger.Info("Group deletion completed successfully")
+	return ctrl.Result{}, nil
 }
 
 // deleteGroupFromKeycloak handles the actual deletion from Keycloak
@@ -662,7 +747,7 @@ func (r *GroupReconciler) deleteGroupFromKeycloak(ctx context.Context, keycloakC
 	return nil
 }
 
-// updateStatus updates the group status with retry logic
+// updateStatus updates the group status with retry logic (simplified version)
 func (r *GroupReconciler) updateStatus(ctx context.Context, groupObj *keycloakv1alpha1.Group, result GroupReconcileResult) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("group", groupObj.Name)
 
@@ -679,19 +764,28 @@ func (r *GroupReconciler) updateStatus(ctx context.Context, groupObj *keycloakv1
 		break
 	}
 
-	if result.Error != nil {
-		return ctrl.Result{}, result.Error
+	// Simple requeue logic - only requeue on failure
+	if !result.Ready {
+		return ctrl.Result{RequeueAfter: groupRequeueInterval}, nil
 	}
 
-	return ctrl.Result{RequeueAfter: groupRequeueInterval}, nil
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
 // performStatusUpdate performs a single status update attempt
 func (r *GroupReconciler) performStatusUpdate(ctx context.Context, groupObj *keycloakv1alpha1.Group, result GroupReconcileResult) error {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("group", groupObj.Name)
+
 	var latestGroup keycloakv1alpha1.Group
 	if err := r.Get(ctx, client.ObjectKeyFromObject(groupObj), &latestGroup); err != nil {
 		return err
+	}
+
+	// Optional: Check if update is needed to avoid unnecessary API calls
+	if r.statusUnchanged(&latestGroup, result) {
+		logger.V(2).Info("Status unchanged, skipping update")
+		groupObj.Status = latestGroup.Status
+		return nil
 	}
 
 	r.applyStatusUpdate(&latestGroup, groupObj, result)
@@ -703,6 +797,7 @@ func (r *GroupReconciler) performStatusUpdate(ctx context.Context, groupObj *key
 	groupObj.Status = latestGroup.Status
 	logger.V(1).Info("Status updated successfully",
 		"ready", latestGroup.Status.Ready,
+		"realmReady", latestGroup.Status.RealmReady,
 		"message", latestGroup.Status.Message,
 		"groupUUID", latestGroup.Status.GroupUUID,
 		"parentGroupUUID", latestGroup.Status.ParentGroupUUID)
@@ -718,12 +813,22 @@ func (r *GroupReconciler) applyStatusUpdate(latestGroup, originalGroup *keycloak
 	now := metav1.NewTime(time.Now())
 	latestGroup.Status.LastSyncTime = &now
 
+	// Preserve operational data from the original group
 	if originalGroup.Status.GroupUUID != "" {
 		latestGroup.Status.GroupUUID = originalGroup.Status.GroupUUID
 	}
 
 	// Preserve parent group UUID
-	latestGroup.Status.ParentGroupUUID = originalGroup.Status.ParentGroupUUID
+	if originalGroup.Status.ParentGroupUUID != "" {
+		latestGroup.Status.ParentGroupUUID = originalGroup.Status.ParentGroupUUID
+	}
+}
+
+// statusUnchanged checks if the status would actually change
+func (r *GroupReconciler) statusUnchanged(latest *keycloakv1alpha1.Group, result GroupReconcileResult) bool {
+	return latest.Status.Ready == result.Ready &&
+		latest.Status.RealmReady == result.RealmReady &&
+		latest.Status.Message == result.Message
 }
 
 // SetupWithManager sets up the controller with the Manager

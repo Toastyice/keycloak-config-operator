@@ -7,7 +7,7 @@ metadata:
   name: keycloakinstanceconfig-sample
 spec:
   url: http://host.docker.internal:8080
-  #adminUrl: http://host.docker.internal:8080 #optional
+  adminUrl: http://host.docker.internal:8080 #optional
   basePath: /auth
   realm: master
   clientId: admin-cli

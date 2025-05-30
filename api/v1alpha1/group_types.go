@@ -105,10 +105,7 @@ type RoleAssignmentStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.spec.name`
 // +kubebuilder:printcolumn:name="Realm",type=string,JSONPath=`.spec.realmRef.name`
-// +kubebuilder:printcolumn:name="Path",type=string,JSONPath=`.status.computedPath`
-// +kubebuilder:printcolumn:name="Enabled",type=boolean,JSONPath=`.spec.enabled`
 // +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
-// +kubebuilder:printcolumn:name="Members",type=integer,JSONPath=`.status.memberCount`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Group is the Schema for the groups API

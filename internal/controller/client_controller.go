@@ -60,19 +60,39 @@ func (r *ClientReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// Get the KeycloakInstanceConfig
+	// Handle deletion first
+	if r.isMarkedForDeletion(clientObj) {
+		keycloakClient, err := r.getKeycloakClient(ctx, clientObj)
+		if err != nil {
+			if strings.Contains(err.Error(), "is not ready") {
+				logger.Info("KeycloakInstanceConfig not ready during deletion, removing finalizer", "client", clientObj.Name)
+				if controllerutil.ContainsFinalizer(clientObj, clientFinalizer) {
+					controllerutil.RemoveFinalizer(clientObj, clientFinalizer)
+					return ctrl.Result{}, r.Update(ctx, clientObj)
+				}
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client during deletion: %w", err)
+		}
+		return r.reconcileDelete(ctx, keycloakClient, clientObj)
+	}
+
+	// Get the KeycloakInstanceConfig for regular reconciliation
 	keycloakClient, err := r.getKeycloakClient(ctx, clientObj)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get Keycloak client: %w", err)
+		if strings.Contains(err.Error(), "is not ready") {
+			// Don't update status, just log and requeue
+			logger.Info("KeycloakInstanceConfig is not ready, requeuing", "client", clientObj.Name)
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		logger.Error(err, "failed to get Keycloak client")
+		// For actual errors (not dependency issues), update status if needed
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, fmt.Errorf("failed to get Keycloak client: %w", err)
 	}
 
 	if err := r.validateReconciler(keycloakClient); err != nil {
 		logger.Error(err, "Controller not properly initialized")
 		return ctrl.Result{}, err
-	}
-
-	if r.isMarkedForDeletion(clientObj) {
-		return r.reconcileDelete(ctx, keycloakClient, clientObj)
 	}
 
 	if err := r.ensureFinalizer(ctx, clientObj); err != nil {
@@ -113,7 +133,21 @@ func (r *ClientReconciler) getKeycloakClient(ctx context.Context, clientObj *key
 		return nil, fmt.Errorf("failed to get KeycloakInstanceConfig %s/%s: %w", configNamespace, configName, err)
 	}
 
+	// Check if the KeycloakInstanceConfig is ready
+	if !r.isKeycloakInstanceConfigReady(&config) {
+		return nil, fmt.Errorf("KeycloakInstanceConfig %s/%s is not ready", configNamespace, configName)
+	}
+
 	return r.ClientManager.GetOrCreateClient(ctx, &config)
+}
+
+func (r *ClientReconciler) isKeycloakInstanceConfigReady(config *keycloakv1alpha1.KeycloakInstanceConfig) bool {
+	for _, condition := range config.Status.Conditions {
+		if condition.Type == "Ready" {
+			return condition.Status == "True"
+		}
+	}
+	return false
 }
 
 // validateReconciler ensures the controller is properly initialized
@@ -771,19 +805,39 @@ func (r *ClientReconciler) updateStatus(ctx context.Context, clientObj *keycloak
 		break
 	}
 
+	// Handle different requeue scenarios based on the result
 	if result.Error != nil {
 		return ctrl.Result{}, result.Error
 	}
 
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	// Different requeue intervals based on the result state
+	switch {
+	case !result.RealmReady:
+		// Shorter interval when waiting for realm to be ready
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	case result.Ready:
+		// Longer interval for ready clients (periodic sync)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil //change to 10 min later!
+	default:
+		// Default interval for other cases
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	}
 }
 
 // performStatusUpdate performs a single status update attempt
 func (r *ClientReconciler) performStatusUpdate(ctx context.Context, clientObj *keycloakv1alpha1.Client, result ReconcileResult) error {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("client", clientObj.Name)
+
 	var latestClient keycloakv1alpha1.Client
 	if err := r.Get(ctx, client.ObjectKeyFromObject(clientObj), &latestClient); err != nil {
 		return err
+	}
+
+	// Optional: Check if update is needed to avoid unnecessary API calls
+	if r.statusUnchanged(&latestClient, result) {
+		logger.V(2).Info("Status unchanged, skipping update")
+		clientObj.Status = latestClient.Status
+		return nil
 	}
 
 	r.applyStatusUpdate(&latestClient, clientObj, result)
@@ -795,6 +849,7 @@ func (r *ClientReconciler) performStatusUpdate(ctx context.Context, clientObj *k
 	clientObj.Status = latestClient.Status
 	logger.V(1).Info("Status updated successfully",
 		"ready", latestClient.Status.Ready,
+		"realmReady", latestClient.Status.RealmReady,
 		"message", latestClient.Status.Message,
 		"clientUUID", latestClient.Status.ClientUUID,
 		"roleCount", len(latestClient.Status.RoleUUIDs))
@@ -810,15 +865,24 @@ func (r *ClientReconciler) applyStatusUpdate(latestClient, originalClient *keycl
 	now := metav1.NewTime(time.Now())
 	latestClient.Status.LastSyncTime = &now
 
+	// Preserve operational data from the original client
 	if originalClient.Status.ClientUUID != "" {
 		latestClient.Status.ClientUUID = originalClient.Status.ClientUUID
 	}
 
-	if originalClient.Status.RoleUUIDs != nil {
+	if len(originalClient.Status.RoleUUIDs) > 0 {
 		latestClient.Status.RoleUUIDs = originalClient.Status.RoleUUIDs
-	} else {
+	} else if latestClient.Status.RoleUUIDs == nil {
+		// Only initialize if it doesn't already exist
 		latestClient.Status.RoleUUIDs = make(map[string]string)
 	}
+}
+
+// statusUnchanged checks if the status would actually change
+func (r *ClientReconciler) statusUnchanged(latest *keycloakv1alpha1.Client, result ReconcileResult) bool {
+	return latest.Status.Ready == result.Ready &&
+		latest.Status.RealmReady == result.RealmReady &&
+		latest.Status.Message == result.Message
 }
 
 // SetupWithManager sets up the controller with the Manager
