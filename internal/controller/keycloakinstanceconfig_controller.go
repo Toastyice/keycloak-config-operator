@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"strings"
@@ -102,27 +103,52 @@ func (r *KeycloakInstanceConfigReconciler) Reconcile(ctx context.Context, req ct
 }
 
 func (r *KeycloakInstanceConfigReconciler) checkURLReachability(config *keycloakv1alpha1.KeycloakInstanceConfig) (bool, string) {
-	// Create a simple HTTP client with timeout
+	// Validate that URL is provided
+	if config.Spec.Url == "" {
+		return false, "URL is not specified in the configuration"
+	}
+
+	// Create TLS config
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: config.Spec.TlsInsecureSkipVerify,
+	}
+
+	// If CA certificate is provided, add it to RootCAs for server verification
+	if config.Spec.CaCert != "" {
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM([]byte(config.Spec.CaCert)) {
+			return false, "failed to parse provided CA certificate"
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	// Set default timeout if not specified
+	timeout := time.Duration(config.Spec.Timeout) * time.Second
+	if config.Spec.Timeout <= 0 {
+		timeout = 30 * time.Second // Default 30 seconds
+	}
+
+	// Create HTTP client with timeout and TLS configuration
 	client := &http.Client{
-		Timeout: time.Duration(config.Spec.Timeout) * time.Second,
+		Timeout: timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: config.Spec.TlsInsecureSkipVerify,
-			},
+			TLSClientConfig: tlsConfig,
 		},
 	}
 
-	// Try to reach the base URL
-	testURL := fmt.Sprintf("%s%s", config.Spec.Url, config.Spec.BasePath)
-
-	resp, err := client.Get(testURL)
+	// Attempt to reach the URL
+	resp, err := client.Get(config.Spec.Url)
 	if err != nil {
-		return false, fmt.Sprintf("Cannot reach Keycloak URL: %v", err)
+		return false, fmt.Sprintf("failed to reach URL %s: %v", config.Spec.Url, err)
 	}
 	defer resp.Body.Close()
 
-	// Any HTTP response (even 404, 401, etc.) means the URL is reachable
-	return true, "Keycloak URL is reachable"
+	// Check if the response status indicates success
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return true, fmt.Sprintf("URL %s is reachable (status: %d)", config.Spec.Url, resp.StatusCode)
+	}
+
+	return false, fmt.Sprintf("URL %s returned non-success status: %d", config.Spec.Url, resp.StatusCode)
 }
 
 func (r *KeycloakInstanceConfigReconciler) updateStatus(ctx context.Context, config *keycloakv1alpha1.KeycloakInstanceConfig, connected, ready bool, connectMessage, readyMessage string, serverInfo *keycloak.ServerInfo) (ctrl.Result, error) {
