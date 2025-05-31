@@ -70,79 +70,63 @@ flowchart TD
     TT --> UU{Creation Success?}
     UU -->|409 Conflict| VV[Manual Intervention Required]
     UU -->|Other Error| WW[Update Status: Creation Failed]
-    UU -->|Success| XX[Fetch Created Group UUID]
-    XX --> YY[Store UUID in Status]
-    YY --> ZZ[Update Status: Group Created]
+    UU -->|Success| XX[Fetch and Store Group UUID]
+    XX --> YY[Update Status: Group Created Successfully]
     
     %% Configuration Comparison
-    RR --> AAA[Compare Group Fields:<br/>• name<br/>• parentId<br/>• realmRoles<br/>• clientRoles<br/>• attributes]
-    AAA --> BBB{Differences Found?}
+    RR --> ZZ[Compare Group Fields]
+    ZZ --> BBB{Changes Detected?}
     BBB -->|No| CCC[Update Status: Group Synchronized]
     BBB -->|Yes| DDD[Log Configuration Changes]
+    
+    %% Update Group
     DDD --> EEE[Apply Changes to Group]
     EEE --> FFF[Update Group in Keycloak]
     FFF --> GGG{Update Success?}
     GGG -->|Error| HHH[Update Status: Update Failed]
-    GGG -->|Success| III[Update Status: Group Updated]
+    GGG -->|Success| III[Update Status: Group Updated Successfully]
+    
+    %% Status Management
+    YY --> JJJ[Schedule Requeue 30s]
+    CCC --> JJJ
+    III --> JJJ
+    
+    %% Error Handling with Requeue
+    U --> KKK[Requeue 10s]
+    W --> KKK
+    HH --> KKK
+    QQ --> KKK
+    WW --> KKK
+    HHH --> KKK
+    VV --> LLL[Manual Resolution Required]
     
     %% Deletion Process Details
-    J --> JJJ{Group UUID Exists?}
-    JJJ -->|No| KKK[Skip Keycloak Deletion]
-    JJJ -->|Yes| LLL[Get Realm for Deletion]
-    LLL --> MMM{Realm Found?}
-    MMM -->|No| NNN[Skip Keycloak Deletion]
-    MMM -->|Yes| OOO[Delete Group from Keycloak]
+    J --> MMM[Delete Group from Keycloak]
+    MMM --> NNN{Group UUID Exists?}
+    NNN -->|No| OOO[Skip Keycloak Deletion]
+    NNN -->|Yes| PPP[Call Keycloak Delete API]
+    PPP --> QQQ{Deletion Success?}
+    QQQ -->|404 - Already Gone| RRR[Consider Success]
+    QQQ -->|Other Error| SSS[Requeue Deletion 5s]
+    QQQ -->|Success| TTT[Remove Finalizer]
+    OOO --> TTT
+    RRR --> TTT
+    TTT --> UUU[End - Group Deleted]
     
-    OOO --> PPP{Deletion Success?}
-    PPP -->|404 - Already Deleted| QQQ[Log: Already Deleted]
-    PPP -->|Other Error| RRR[Requeue Deletion in 5s]
-    PPP -->|Success| SSS[Log: Group Deleted]
+    %% Configuration Diff Details
+    ZZ --> VVV[Check Field Differences:<br/>• name changes<br/>• parentId changes<br/>• realmRoles modifications<br/>• clientRoles modifications<br/>• attributes changes]
     
-    KKK --> TTT[Remove Finalizer]
-    NNN --> TTT
-    QQQ --> TTT
-    SSS --> TTT
-    TTT --> UUU[Update Object]
-    UUU --> VVV[End - Object Will Be Removed]
+    %% Parent Resolution Details
+    FF --> WWW[Parent Group Resolution:<br/>• Search by name in realm<br/>• Handle multiple matches<br/>• Store parent UUID<br/>• Set hierarchical relationship]
     
-    %% Status Update Process with Retry Logic
-    ZZ --> WWW[Status Update with Retry]
-    CCC --> WWW
-    III --> WWW
-    U --> WWW
-    W --> WWW
-    H --> WWW
-    QQ --> WWW
-    WW --> WWW
-    HHH --> WWW
-    VV --> WWW
+    %% Status Update Retry Logic
+    YY --> XXX[Status Update Process:<br/>• Retry up to 3 times<br/>• Exponential backoff<br/>• Fetch latest before update<br/>• Preserve operational data]
     
-    WWW --> XXX[Retry Up to 3 Times]
-    XXX --> YYY{Status Update Success?}
-    YYY -->|Conflict & Retries Left| ZZZ[Exponential Backoff<br/>Fetch Latest & Retry]
-    YYY -->|Success| AAAA[Determine Requeue Interval]
-    YYY -->|Failed After Retries| BBBB[Return Status Error]
+    %% Owner Reference Logic
+    CC --> YYY[Owner Reference Management:<br/>• Set realm as owner<br/>• Prevent cross-namespace refs<br/>• Enable cascade deletion<br/>• Maintain dependency graph]
     
-    ZZZ --> XXX
-    
-    AAAA --> CCCC{Group Ready?}
-    CCCC -->|No| DDDD[Requeue in 10s]
-    CCCC -->|Yes| EEEE[Requeue in 30s for Periodic Sync]
-    
-    %% Parent Group Resolution Details
-    FF --> FFFF[Search Groups in Realm by Name]
-    FFFF --> GGGG{Multiple Groups Found?}
-    GGGG -->|Yes| HHHH[Use First Match - Log Warning]
-    GGGG -->|No| IIII[Use Single Match]
-    HHHH --> IIII
-    IIII --> II
-    
-    %% Field Comparison Details
-    BBB --> JJJJ[Field Differences:<br/>• name: 'old' → 'new'<br/>• parentId: uuid1 → uuid2<br/>• realmRoles: [role1] → [role1,role2]<br/>• clientRoles: map changes<br/>• attributes: map changes]
-    
-    %% Special Cases & Error Handling
-    style VV fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
-    style RRR fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    %% Error Recovery Strategies
+    KKK --> ZZZ[Error Recovery:<br/>• Different retry intervals<br/>• Distinguish transient vs permanent<br/>• Preserve state during failures<br/>• Log detailed error context]
     
     %% Styling
     classDef errorNode fill:#ffebee,stroke:#f44336,stroke-width:2px
@@ -151,11 +135,13 @@ flowchart TD
     classDef decisionNode fill:#fff3e0,stroke:#ff9800,stroke-width:2px
     classDef statusNode fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
     classDef parentNode fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef detailNode fill:#fafafa,stroke:#616161,stroke-width:1px
     
-    class I,N,QQ,WW,HHH,VV,BBBB errorNode
-    class D,VVV,EEEE successNode
-    class WWW,XXX,AAAA processNode
-    class C,E,G,L,P,T,V,Y,AA,EE,GG,LL,OO,UU,BBB,GGG,JJJ,MMM,PPP,YYY,CCCC decisionNode
-    class ZZ,CCC,III,U,W,H statusNode
-    class DD,FF,II,FFFF,GGGG parentNode
+    class I,N,QQ,WW,HHH,VV,SSS errorNode
+    class D,UUU,YY,CCC,III successNode
+    class SS,TT,EEE,FFF,MMM,PPP processNode
+    class C,E,G,L,P,T,V,Y,AA,EE,GG,LL,OO,UU,BBB,GGG,NNN,QQQ decisionNode
+    class U,W,H,KKK statusNode
+    class DD,FF,II,WWW parentNode
+    class VVV,XXX,YYY,ZZZ detailNode
 ```
