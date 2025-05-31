@@ -48,13 +48,6 @@ type GroupReconcileResult struct {
 	Error      error
 }
 
-// GroupFieldDiff represents a field difference for change detection
-type GroupFieldDiff struct {
-	Name string
-	Old  any
-	New  any
-}
-
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=groups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=groups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=keycloak.schella.network,resources=groups/finalizers,verbs=update
@@ -575,7 +568,7 @@ func (r *GroupReconciler) applyChangesToGroup(groupObj *keycloakv1alpha1.Group, 
 func (r *GroupReconciler) getGroupDiffs(groupObj *keycloakv1alpha1.Group, keycloakGroup *keycloak.Group) []string {
 	var diffs []string
 
-	fields := []GroupFieldDiff{
+	fields := []FieldDiff{
 		{"name", keycloakGroup.Name, groupObj.Spec.Name},
 		{"parentId", keycloakGroup.ParentId, groupObj.Status.ParentGroupUUID},
 	}
@@ -603,7 +596,7 @@ func (r *GroupReconciler) getGroupDiffs(groupObj *keycloakv1alpha1.Group, keyclo
 }
 
 // formatGroupFieldDiff formats a field difference for logging
-func (r *GroupReconciler) formatGroupFieldDiff(field GroupFieldDiff) string {
+func (r *GroupReconciler) formatGroupFieldDiff(field FieldDiff) string {
 	if reflect.TypeOf(field.Old).Kind() == reflect.String {
 		return fmt.Sprintf("%s: '%v' -> '%v'", field.Name, field.Old, field.New)
 	}
