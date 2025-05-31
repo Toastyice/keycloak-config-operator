@@ -4,9 +4,6 @@
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
 
-## known Issues
-Group parent relationships aren't fixed if changed manually
-
 ## Getting Started
 
 ### Prerequisites
