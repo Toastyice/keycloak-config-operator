@@ -154,6 +154,10 @@ type ClientSpec struct {
 	// +optional
 	// +kubebuilder:default=false
 	BackchannelLogoutRevokeOfflineTokens bool `json:"backchannelLogoutRevokeOfflineTokens"`
+
+	// Secret configuration for confidential clients (when PublicClient is false)
+	// +optional
+	Secret *ClientSecretSpec `json:"secret,omitempty"`
 }
 
 type RoleSpec struct {
@@ -162,6 +166,35 @@ type RoleSpec struct {
 
 	// +optional
 	Description string `json:"description"`
+}
+
+// ClientSecretSpec defines the configuration for creating Kubernetes secrets for confidential clients
+type ClientSecretSpec struct {
+	// CreateSecret indicates whether to create a Kubernetes secret for this client's credentials
+	// Only applicable for confidential clients (PublicClient: false)
+	// +optional
+	// +kubebuilder:default=true
+	CreateSecret bool `json:"createSecret"`
+
+	// SecretName specifies the name of the Kubernetes secret to create
+	// If not specified, defaults to "<client-name>-client-secret"
+	// +optional
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+	SecretName string `json:"secretName,omitempty"`
+
+	// SecretNamespace specifies the namespace where the secret should be created
+	// If not specified, defaults to the same namespace as the Client resource
+	// +optional
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+	SecretNamespace string `json:"secretNamespace,omitempty"`
+
+	// AdditionalLabels specifies additional labels to be added to the created secret
+	// +optional
+	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
+
+	// AdditionalAnnotations specifies additional annotations to be added to the created secret
+	// +optional
+	AdditionalAnnotations map[string]string `json:"additionalAnnotations,omitempty"`
 }
 
 // ClientStatus defines the observed state of Client
@@ -185,6 +218,28 @@ type ClientStatus struct {
 	// RoleUUIDs maps role names to their Keycloak UUIDs
 	// +optional
 	RoleUUIDs map[string]string `json:"roleUUIDs,omitempty"`
+
+	// Secret status information
+	// +optional
+	Secret *ClientSecretStatus `json:"secret,omitempty"`
+}
+
+// ClientSecretStatus contains the status of the created secret
+type ClientSecretStatus struct {
+	// SecretCreated indicates whether the secret has been created successfully
+	SecretCreated bool `json:"secretCreated"`
+
+	// SecretName is the name of the created secret
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
+
+	// SecretNamespace is the namespace of the created secret
+	// +optional
+	SecretNamespace string `json:"secretNamespace,omitempty"`
+
+	// LastSecretUpdate is the last time the secret was updated
+	// +optional
+	LastSecretUpdate *metav1.Time `json:"lastSecretUpdate,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -193,6 +248,7 @@ type ClientStatus struct {
 // +kubebuilder:printcolumn:name="Realm",type=string,JSONPath=`.spec.realmRef.name`
 // +kubebuilder:printcolumn:name="Enabled",type=boolean,JSONPath=`.spec.enabled`
 // +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
+// +kubebuilder:printcolumn:name="Secret",type=boolean,JSONPath=`.status.secret.secretCreated`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Client is the Schema for the clients API
