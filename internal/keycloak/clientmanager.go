@@ -119,34 +119,6 @@ func (cm *ClientManager) RemoveClient(config *keycloakv1alpha1.KeycloakInstanceC
 	}
 }
 
-// ClearAllClients removes all cached clients (useful for testing or complete reset)
-func (cm *ClientManager) ClearAllClients() {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-
-	cm.clients = make(map[string]*keycloak.KeycloakClient)
-}
-
-// GetCachedClientsCount returns the number of cached clients (useful for debugging)
-func (cm *ClientManager) GetCachedClientsCount() int {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	return len(cm.clients)
-}
-
-// ListClientKeys returns all current client keys (useful for debugging)
-func (cm *ClientManager) ListClientKeys() []string {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	keys := make([]string, 0, len(cm.clients))
-	for key := range cm.clients {
-		keys = append(keys, key)
-	}
-	return keys
-}
-
 func (cm *ClientManager) createKeycloakClient(ctx context.Context, spec *keycloakv1alpha1.KeycloakInstanceConfigSpec) (*keycloak.KeycloakClient, error) {
 	// Use AdminUrl if provided, otherwise fall back to Url
 	keycloakUrl := spec.Url
