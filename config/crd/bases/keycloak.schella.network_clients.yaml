@@ -27,6 +27,9 @@ spec:
     - jsonPath: .status.ready
       name: Ready
       type: boolean
+    - jsonPath: .status.secret.secretCreated
+      name: Secret
+      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -246,6 +249,41 @@ spec:
               rootUrl:
                 description: Root URL appended to relative URLs
                 type: string
+              secret:
+                description: Secret configuration for confidential clients (when PublicClient
+                  is false)
+                properties:
+                  additionalAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: AdditionalAnnotations specifies additional annotations
+                      to be added to the created secret
+                    type: object
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    description: AdditionalLabels specifies additional labels to be
+                      added to the created secret
+                    type: object
+                  createSecret:
+                    default: true
+                    description: |-
+                      CreateSecret indicates whether to create a Kubernetes secret for this client's credentials
+                      Only applicable for confidential clients (PublicClient: false)
+                    type: boolean
+                  secretName:
+                    description: |-
+                      SecretName specifies the name of the Kubernetes secret to create
+                      If not specified, defaults to "<client-name>-client-secret"
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  secretNamespace:
+                    description: |-
+                      SecretNamespace specifies the namespace where the secret should be created
+                      If not specified, defaults to the same namespace as the Client resource
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                type: object
               serviceAccountsEnabled:
                 default: false
                 description: Allows you to authenticate this client to Keycloak and
@@ -325,6 +363,27 @@ spec:
                 additionalProperties:
                   type: string
                 description: RoleUUIDs maps role names to their Keycloak UUIDs
+                type: object
+              secret:
+                description: Secret status information
+                properties:
+                  lastSecretUpdate:
+                    description: LastSecretUpdate is the last time the secret was
+                      updated
+                    format: date-time
+                    type: string
+                  secretCreated:
+                    description: SecretCreated indicates whether the secret has been
+                      created successfully
+                    type: boolean
+                  secretName:
+                    description: SecretName is the name of the created secret
+                    type: string
+                  secretNamespace:
+                    description: SecretNamespace is the namespace of the created secret
+                    type: string
+                required:
+                - secretCreated
                 type: object
             type: object
         type: object

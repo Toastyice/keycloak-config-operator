@@ -62,3 +62,12 @@ spec:
   backchannelLogoutUrl: "http://example.fr/cool"
   backchannelLogoutSessionRequired: true
   backchannelLogoutRevokeOfflineTokens: true
+  secret:
+    createSecret: true
+    secretName: client-sample-client-secret
+    secretNamespace: default
+    additionalLabels:
+      environment: "production"
+    additionalAnnotations:
+      reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
+      reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "namespace-1,namespace-2,namespace-[0-9]*"
