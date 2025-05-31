@@ -174,37 +174,6 @@ func (r *GroupReconciler) isKeycloakInstanceConfigReady(config *keycloakv1alpha1
 	return false
 }
 
-// validateReconciler ensures the controller is properly initialized
-func (r *GroupReconciler) validateReconciler(keycloakClient *keycloak.KeycloakClient) error {
-	if keycloakClient == nil {
-		return fmt.Errorf("KeycloakClient is nil - controller not properly initialized")
-	}
-	return nil
-}
-
-// fetchGroup retrieves the Group object from the cluster
-func (r *GroupReconciler) fetchGroup(ctx context.Context, namespacedName types.NamespacedName) (*keycloakv1alpha1.Group, error) {
-	var groupObj keycloakv1alpha1.Group
-	if err := r.Get(ctx, namespacedName, &groupObj); err != nil {
-		return nil, err
-	}
-	return &groupObj, nil
-}
-
-// isMarkedForDeletion checks if the group is being deleted
-func (r *GroupReconciler) isMarkedForDeletion(groupObj *keycloakv1alpha1.Group) bool {
-	return !groupObj.ObjectMeta.DeletionTimestamp.IsZero()
-}
-
-// ensureFinalizer adds the finalizer if it doesn't exist
-func (r *GroupReconciler) ensureFinalizer(ctx context.Context, groupObj *keycloakv1alpha1.Group) error {
-	if !controllerutil.ContainsFinalizer(groupObj, groupFinalizer) {
-		controllerutil.AddFinalizer(groupObj, groupFinalizer)
-		return r.Update(ctx, groupObj)
-	}
-	return nil
-}
-
 // validateRealm with requeue logic
 func (r *GroupReconciler) validateRealm(ctx context.Context, groupObj *keycloakv1alpha1.Group) (*keycloakv1alpha1.Realm, *GroupReconcileResult) {
 	realm, err := r.getRealm(ctx, groupObj)
@@ -686,39 +655,6 @@ func (r *GroupReconciler) reconcileDelete(ctx context.Context, keycloakClient *k
 	}
 
 	log.Info("Group deletion completed successfully")
-	return ctrl.Result{}, nil
-}
-
-// reconcileDeleteWithRequeue handles group deletion with proper requeue logic
-func (r *GroupReconciler) reconcileDeleteWithRequeue(ctx context.Context, groupObj *keycloakv1alpha1.Group) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues("group", groupObj.Name)
-
-	if !controllerutil.ContainsFinalizer(groupObj, groupFinalizer) {
-		return ctrl.Result{}, nil
-	}
-
-	// Try to get Keycloak client for deletion
-	keycloakClient, err := r.getKeycloakClient(ctx, groupObj)
-	if err != nil {
-		logger.Info("Cannot get Keycloak client for deletion, will retry", "error", err)
-		// Requeue deletion attempt - Keycloak might become available
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-
-	// Attempt deletion from Keycloak
-	if err := r.deleteGroupFromKeycloak(ctx, keycloakClient, groupObj); err != nil {
-		logger.Error(err, "Failed to delete group from Keycloak, will retry")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-	}
-
-	// Remove finalizer and complete deletion
-	controllerutil.RemoveFinalizer(groupObj, groupFinalizer)
-	if err := r.Update(ctx, groupObj); err != nil {
-		logger.Error(err, "Failed to remove finalizer")
-		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
-	}
-
-	logger.Info("Group deletion completed successfully")
 	return ctrl.Result{}, nil
 }
 
