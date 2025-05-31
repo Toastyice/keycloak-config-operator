@@ -5,5 +5,9 @@
 - [?] When KeycloakInstanceConfig is not Connected should the status of dependecies change to Unkown?
 - [&check;] When KeycloakInstanceConfig is not ready don't delete of clients, groups, realms should not work eg should be stuck!
 
+### known Issues
+- Group parent relationships aren't fixed if changed manually
+
+
 ### Later:
 - e2e tests
