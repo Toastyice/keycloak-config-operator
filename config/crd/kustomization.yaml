@@ -6,6 +6,7 @@ resources:
 - bases/keycloak.schella.network_clients.yaml
 - bases/keycloak.schella.network_groups.yaml
 - bases/keycloak.schella.network_keycloakinstanceconfigs.yaml
+- bases/keycloak.schella.network_realmroles.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -19,6 +20,7 @@ patches:
 #- path: patches/cainjection_in_clients.yaml
 #- path: patches/cainjection_in_groups.yaml
 #- path: patches/cainjection_in_keycloakinstanceconfigs.yaml
+#- path: patches/cainjection_in_realmroles.yaml
 # +kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # [WEBHOOK] To enable webhook, uncomment the following section
