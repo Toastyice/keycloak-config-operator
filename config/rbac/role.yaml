@@ -10,6 +10,7 @@ rules:
   - clients
   - groups
   - keycloakinstanceconfigs
+  - realmroles
   - realms
   verbs:
   - create
@@ -25,6 +26,7 @@ rules:
   - clients/finalizers
   - groups/finalizers
   - keycloakinstanceconfigs/finalizers
+  - realmroles/finalizers
   - realms/finalizers
   verbs:
   - update
@@ -34,6 +36,7 @@ rules:
   - clients/status
   - groups/status
   - keycloakinstanceconfigs/status
+  - realmroles/status
   - realms/status
   verbs:
   - get

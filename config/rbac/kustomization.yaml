@@ -22,6 +22,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- realmrole_editor_role.yaml
+- realmrole_viewer_role.yaml
 - keycloakinstanceconfig_editor_role.yaml
 - keycloakinstanceconfig_viewer_role.yaml
 - group_editor_role.yaml

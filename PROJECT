@@ -47,4 +47,13 @@ resources:
   kind: KeycloakInstanceConfig
   path: github.com/toastyice/keycloak-config-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: schella.network
+  group: keycloak
+  kind: RealmRole
+  path: github.com/toastyice/keycloak-config-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

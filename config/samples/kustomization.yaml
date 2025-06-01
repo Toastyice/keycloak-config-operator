@@ -4,4 +4,5 @@ resources:
 - keycloak_v1alpha1_realm.yaml
 - keycloak_v1alpha1_client.yaml
 - keycloak_v1alpha1_group.yaml
+- keycloak_v1alpha1_realmrole.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

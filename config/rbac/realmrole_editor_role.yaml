@@ -1,0 +1,27 @@
+# permissions for end users to edit realmroles.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: realmrole-editor-role
+rules:
+- apiGroups:
+  - keycloak.schella.network
+  resources:
+  - realmroles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - keycloak.schella.network
+  resources:
+  - realmroles/status
+  verbs:
+  - get

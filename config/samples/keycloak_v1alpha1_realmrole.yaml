@@ -1,0 +1,26 @@
+apiVersion: keycloak.schella.network/v1alpha1
+kind: RealmRole
+metadata:
+  labels:
+    app.kubernetes.io/name: keycloak-config-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: realmrole-sample
+spec:
+  instanceConfigRef:
+    name: keycloakinstanceconfig-sample
+  realmRef:
+    name: realm-sample
+  name: realmrole-minimal-sample
+  description: "My Realm role"
+  attributes:
+    department:
+      - engineering
+    cost-center:
+      - dev-ops-001
+    environment:
+      - development
+      - staging
+    team-lead:
+      - john.doe@company.com
+    budget-code:
+      - PROJ-2024-DEV
