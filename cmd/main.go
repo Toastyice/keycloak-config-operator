@@ -25,7 +25,7 @@ import (
 
 	keycloakv1alpha1 "github.com/toastyice/keycloak-config-operator/api/v1alpha1"
 	"github.com/toastyice/keycloak-config-operator/internal/controller"
-
+	clientController "github.com/toastyice/keycloak-config-operator/internal/controller/client"
 	//"github.com/keycloak/terraform-provider-keycloak/keycloak"
 	keycloakclientmanager "github.com/toastyice/keycloak-config-operator/internal/keycloak"
 	// +kubebuilder:scaffold:imports
@@ -153,7 +153,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Realm")
 		os.Exit(1)
 	}
-	if err = (&controller.ClientReconciler{
+	if err = (&clientController.ClientReconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
 		ClientManager: clientManager,
